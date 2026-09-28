@@ -1,0 +1,2 @@
+.env
+printf "\nchroma_db/\n.env\n.venv/\n__pycache__/\n.DS_Store\n" >> .gitignore
