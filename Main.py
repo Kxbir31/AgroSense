@@ -86,11 +86,7 @@ bm25 = BM25Okapi(tokenized_chunks)
 #USER QUERY
 query = "What is the soil type of Gorakhpur?"
 
-print("\n========================================")
 print("QUERY:", query)
-print("========================================")
-
-
 
 #BM25 RETRIEVAL
 tokenized_query = tokenize(query)
