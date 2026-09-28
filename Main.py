@@ -1,47 +1,121 @@
-from langchain_core.documents import Document
-from langchain_google_genai import ChatGoogleGenerativeAI
-from chromadb import Embeddings
-from langchain_community.retrievers import BM25Retriever
-from langchain_huggingface import HuggingFaceEmbeddings
-import os
+import re
+from dotenv import load_dotenv
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-from dotenv import load_dotenv
+
+from rank_bm25 import BM25Okapi
+
+# LOAD ENVIRONMENT VARIABLES
+
+
 load_dotenv()
 
 
-files = [
-    "India_Crop_History_Profitability_Dataset.pdf",
-    "India_Soil_Dataset PDF.pdf",
-    "India_Soil_Weather_Crop_Dataset.pdf"
+
+#LOAD PDF DOCUMENTS
+
+files = ['India_District_Agri_Master_RAG.pdf'
 ]
 
-docs = []  #contains pages from all 3 pdf
+docs = []
 
 for file in files:
     loader = PyPDFLoader(file)
-    docs.extend(loader.load())
+    file_docs = loader.load()
 
-# print(len(docs))
+    # Store source filename in metadata
+    for doc in file_docs:
+        doc.metadata["source_file"] = file
+
+    docs.extend(file_docs)
+
+print(f"Total pages loaded: {len(docs)}")
 
 
-# print(docs[15].page_content)
-
+#SPLIT DOCUMENTS INTO CHUNKS
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
+    chunk_size=750,
+    chunk_overlap=150
 )
 
 chunks = text_splitter.split_documents(docs)
 
+print(f"Total chunks created: {len(chunks)}")
+
+
+
+#CREATE EMBEDDINGS
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
+
+
+#STORE CHUNKS IN CHROMADB
 vectorstore = Chroma.from_documents(
     documents=chunks,
     embedding=embeddings,
     collection_name="agriculture_rag",
     persist_directory="./chroma_db"
 )
+
+
+
+
+
+# CREATE BM25 INDEX
+def tokenize(text):
+    """
+    Convert text into lowercase words.
+    Handles punctuation better than simple .split()
+    """
+    return re.findall(r"\b\w+\b", text.lower())
+
+
+tokenized_chunks = [
+    tokenize(doc.page_content)
+    for doc in chunks
+]
+
+bm25 = BM25Okapi(tokenized_chunks)
+
+
+#USER QUERY
+query = "What is the soil type of Gorakhpur?"
+
+print("\n========================================")
+print("QUERY:", query)
+print("========================================")
+
+
+
+#BM25 RETRIEVAL
+tokenized_query = tokenize(query)
+
+scores = bm25.get_scores(tokenized_query)
+
+# Get indices of top 5 documents
+ranked_indices = sorted(
+    range(len(scores)),
+    key=lambda i: scores[i],
+    reverse=True
+)[:2]
+
+
+
+# DISPLAY BM25 RESULTS
+print("\n========== BM25 RESULTS ==========")
+
+for rank, index in enumerate(ranked_indices, start=1):
+
+    doc = chunks[index]
+
+    print(f"\n--- Result {rank} ---")
+    print("BM25 Score:", scores[index])
+    print("Source:", doc.metadata.get("source_file"))
+    print("Page:", doc.metadata.get("page"))
+    print("Content:")
+    print(doc.page_content[:750])
