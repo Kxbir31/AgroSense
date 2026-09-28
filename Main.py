@@ -84,7 +84,7 @@ bm25 = BM25Okapi(tokenized_chunks)
 
 
 #USER QUERY
-query = "What is the soil type of Gorakhpur?"
+query = "What is the soil type of Sehore?"
 
 print("QUERY:", query)
 
@@ -103,13 +103,13 @@ ranked_indices = sorted(
 
 
 # DISPLAY BM25 RESULTS
-print("\n========== BM25 RESULTS ==========")
+print("\nBM25 RESULTS")
 
 for rank, index in enumerate(ranked_indices, start=1):
 
     doc = chunks[index]
 
-    print(f"\n--- Result {rank} ---")
+    print(f"\n  Result {rank}  ")
     print("BM25 Score:", scores[index])
     print("Source:", doc.metadata.get("source_file"))
     print("Page:", doc.metadata.get("page"))
