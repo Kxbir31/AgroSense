@@ -114,4 +114,4 @@ for rank, index in enumerate(ranked_indices, start=1):
     print("Source:", doc.metadata.get("source_file"))
     print("Page:", doc.metadata.get("page"))
     print("Content:")
-    print(doc.page_content[:750])
+    print(doc.page_content[:700])
