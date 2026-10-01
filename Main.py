@@ -84,7 +84,7 @@ bm25 = BM25Okapi(tokenized_chunks)
 
 
 #USER QUERY
-query = "What is the soil type of Sehore?"
+# query = "What is the soil type of Sehore?"
 
 print("QUERY:", query)
 
