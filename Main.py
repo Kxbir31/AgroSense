@@ -55,12 +55,22 @@ embeddings = HuggingFaceEmbeddings(
 
 
 #STORE CHUNKS IN CHROMADB
-vectorstore = Chroma.from_documents(
-    documents=chunks,
-    embedding=embeddings,
-    collection_name="agriculture_rag",
-    persist_directory="./chroma_db"
-)
+import os
+
+# db already saved -> just open it, else build it (stops duplicates on every run)
+if os.path.exists("./chroma_db") and os.listdir("./chroma_db"):
+    vectorstore = Chroma(
+        collection_name="agriculture_rag",
+        embedding_function=embeddings,
+        persist_directory="./chroma_db"
+    )
+else:
+    vectorstore = Chroma.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        collection_name="agriculture_rag",
+        persist_directory="./chroma_db"
+    )
 
 
 
@@ -83,35 +93,296 @@ tokenized_chunks = [
 bm25 = BM25Okapi(tokenized_chunks)
 
 
-#USER QUERY
-query = "What is the soil type of Sehore?"
+# AGENT: ROUTER + WEATHER + HYBRID RETRIEVAL + HF LLM
+import time
+import requests
+from huggingface_hub import InferenceClient
 
-print("QUERY:", query)
+HF_TOKEN = os.getenv("HF_TOKEN")
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+HF_MODEL = os.getenv("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 
-#BM25 RETRIEVAL
-tokenized_query = tokenize(query)
+# no model fixed here, ask_llm tries the models below one by one
+llm_client = InferenceClient(token=HF_TOKEN)
+MODELS = [HF_MODEL, "meta-llama/Llama-3.1-8B-Instruct", "Qwen/Qwen2.5-72B-Instruct", "openai/gpt-oss-20b"]
+working_model = None
 
-scores = bm25.get_scores(tokenized_query)
-
-# Get indices of top 5 documents
-ranked_indices = sorted(
-    range(len(scores)),
-    key=lambda i: scores[i],
-    reverse=True
-)[:2]
+# Map chunk text -> index, so vector hits can be matched with BM25 indices
+chunk_index = {c.page_content: i for i, c in enumerate(chunks)}
 
 
+# ---------------- 1. ROUTER (keyword based, no LLM call) ----------------
+# weather words
+WEATHER_KW = {
+    "weather", "rain", "rainy", "raining", "rainfall", "shower", "drizzle",
+    "temperature", "temp", "humidity", "humid", "forecast", "wind", "windy",
+    "climate", "hot", "cold", "heat", "heatwave", "frost", "fog", "cloud",
+    "cloudy", "storm", "thunderstorm", "lightning", "hailstorm", "hail",
+    "flood", "drought", "dry", "sunny", "sunlight", "monsoon", "cyclone",
+    "today", "tomorrow", "tonight", "now", "current", "currently", "latest",
+    "week", "outside", "condition", "conditions", "degree", "celsius",
+    "uv", "dew", "mist", "pressure", "visibility",
+    # Farming actions that depend on live weather
+    "spray", "spraying", "sow", "sowing", "harvest", "harvesting",
+    "irrigate", "irrigating", "water", "watering", "dry", "drying",
+    "transplant", "transplanting", "plough", "ploughing", "plow", "plowing",
+    "thresh", "threshing",
+    # Hindi / Hinglish
+    "barish", "baarish", "mausam", "garmi", "sardi", "thand", "dhoop",
+    "hawa", "aandhi", "toofan", "kohra", "olavrishti", "sukha", "badal",
+    "aaj", "kal", "abhi", "tapman", "nami", "paani", "pani", "sinchai",
+    "kataai", "buwai", "bovai", "chidkav", "chhidkav",
+}
 
-# DISPLAY BM25 RESULTS
-print("\nBM25 RESULTS")
+# pdf / district knowledge words
+RETRIEVAL_KW = {
+    # Soil and land
+    "soil", "soils", "mitti", "land", "zameen", "jameen", "terrain", "texture",
+    "ph", "organic", "carbon", "nutrient", "nutrients", "nitrogen", "phosphorus",
+    "potash", "npk", "alluvial", "black", "red", "laterite", "loamy", "clay",
+    "sandy", "saline", "alkaline", "acidic", "fertility", "topography",
+    # Crops
+    "crop", "crops", "fasal", "fasalein", "kheti", "farming", "farm", "farmer",
+    "kisan", "agriculture", "agricultural", "cultivation", "cultivate", "grow",
+    "grown", "growing", "plant", "planting", "variety", "varieties", "hybrid",
+    "seed", "seeds", "beej", "wheat", "gehu", "gehun", "rice", "dhan", "paddy",
+    "soybean", "soyabean", "cotton", "kapas", "maize", "makka", "corn",
+    "pulses", "dal", "gram", "chana", "lentil", "masoor", "tur", "arhar",
+    "moong", "urad", "mustard", "sarson", "groundnut", "sugarcane", "ganna",
+    "potato", "aloo", "onion", "pyaz", "tomato", "garlic", "lahsun", "millet",
+    "bajra", "jowar", "sorghum", "ragi", "barley", "jau", "vegetable",
+    "vegetables", "sabzi", "fruit", "fruits", "orchard", "banana", "mango",
+    "orange", "pomegranate", "chilli", "chili", "turmeric", "coriander",
+    "sunflower", "sesame", "til", "linseed", "oilseed", "oilseeds", "cereal",
+    "cereals", "horticulture", "fodder", "forage", "tea", "coffee", "jute",
+    # Seasons
+    "season", "seasons", "kharif", "rabi", "zaid", "summer", "winter",
+    # Inputs and protection
+    "fertilizer", "fertiliser", "fertilizers", "khad", "urea", "dap", "manure",
+    "compost", "pesticide", "insecticide", "fungicide", "herbicide", "pest",
+    "pests", "disease", "diseases", "rog", "keet", "weed", "weeds", "dawa",
+    # Water and irrigation infrastructure
+    "irrigation", "canal", "well", "borewell", "tubewell", "tank", "pond",
+    "river", "dam", "groundwater", "watershed", "drip", "sprinkler",
+    # Statistics and economics
+    "yield", "production", "produce", "area", "hectare", "hectares", "ha",
+    "acre", "acres", "tonnes", "tons", "productivity", "output", "average",
+    "total", "percent", "percentage", "statistics", "data", "report",
+    "mandi", "market", "msp", "price", "prices", "rate", "rates", "subsidy",
+    "scheme", "schemes", "insurance", "loan", "kcc",
+    # District / general location info
+    "district", "zila", "jila", "state", "block", "tehsil", "village", "gaon",
+    "region", "agroclimatic", "zone", "major", "main", "top", "type", "types",
+    "kind", "which", "what", "list", "tell", "about", "information", "details",
+    "livestock", "cattle", "dairy", "poultry", "fishery", "fish",
+}
 
-for rank, index in enumerate(ranked_indices, start=1):
+# Advice-style questions need BOTH weather and district knowledge
+ADVICE_KW = {
+    "should", "can", "could", "advice", "advise", "suggest", "suggestion",
+    "recommend", "recommendation", "best", "when", "plan", "planning",
+    "ideal", "suitable", "right", "safe", "good", "worth", "ok", "okay",
+    "sahi", "sakte", "sakta", "chahiye", "kab", "kya", "kaise", "salah",
+    }
 
-    doc = chunks[index]
 
-    print(f"\n  Result {rank}  ")
-    print("BM25 Score:", scores[index])
-    print("Source:", doc.metadata.get("source_file"))
-    print("Page:", doc.metadata.get("page"))
-    print("Content:")
-    print(doc.page_content[:700])
+def route_query(query, district):
+    words = set(tokenize(query))
+    need_weather = bool(words & WEATHER_KW)
+    need_retrieval = bool(words & RETRIEVAL_KW) or district.lower() in query.lower()
+
+    # word forms like irrigating / fertilizers
+    if any(w.startswith(("weath", "rain", "temper", "forecast")) for w in words):
+        need_weather = True
+    if any(w.startswith(("irrigat", "fertili", "cultivat", "agri")) for w in words):
+        need_retrieval = True
+
+    # advice question mentioning a farming action -> use both sources
+    if words & ADVICE_KW and (need_weather or need_retrieval):
+        need_weather = need_retrieval = True
+
+    if need_weather and need_retrieval:
+        return "BOTH"
+    if need_weather:
+        return "WEATHER"
+    if need_retrieval:
+        return "RETRIEVAL"
+
+    # nothing matched -> only skip the pdf for tiny messages like "hi"
+    if len(words) <= 2:
+        return "DIRECT"
+    return "RETRIEVAL"
+
+
+# ---------------- 2. WEATHER (OpenWeatherMap + 10 min cache) ----------------
+_weather_cache = {}
+WEATHER_TTL = 600  # seconds
+
+
+def get_weather(district, state):
+    key = (district.lower(), state.lower())
+    cached = _weather_cache.get(key)
+    if cached and time.time() - cached[0] < WEATHER_TTL:
+        return cached[1]
+
+    try:
+        # Step 1: district -> lat/lon
+        geo = requests.get(
+            "https://api.openweathermap.org/geo/1.0/direct",
+            params={"q": f"{district},{state},IN", "limit": 1,
+                    "appid": OPENWEATHER_API_KEY},
+            timeout=5,
+        ).json()
+        if not geo:
+            geo = requests.get(
+                "https://api.openweathermap.org/geo/1.0/direct",
+                params={"q": f"{district},IN", "limit": 1,
+                        "appid": OPENWEATHER_API_KEY},
+                timeout=5,
+            ).json()
+        # api gives a dict (not a list) when something is wrong, eg wrong key
+        if not geo or isinstance(geo, dict):
+            print("Weather error:", geo)
+            return None
+
+        lat, lon = geo[0]["lat"], geo[0]["lon"]
+
+        # Step 2: lat/lon -> current weather
+        w = requests.get(
+            "https://api.openweathermap.org/data/2.5/weather",
+            params={"lat": lat, "lon": lon, "units": "metric",
+                    "appid": OPENWEATHER_API_KEY},
+            timeout=5,
+        ).json()
+        if "main" not in w:
+            print("Weather error:", w)
+            return None
+
+        summary = (
+            f"Temperature: {w['main']['temp']}°C "
+            f"(feels like {w['main']['feels_like']}°C), "
+            f"Humidity: {w['main']['humidity']}%, "
+            f"Condition: {w['weather'][0]['description']}, "
+            f"Wind: {w['wind']['speed']} m/s, "
+            f"Rain (last 1h): {w.get('rain', {}).get('1h', 0)} mm"
+        )
+        _weather_cache[key] = (time.time(), summary)
+        return summary
+
+    except Exception as e:
+        print("Weather fetch failed:", repr(e))
+        return None
+
+
+# ---------------- 3. HYBRID RETRIEVAL (BM25 + Vector, merged with RRF) ----------------
+def retrieve(query, district, state, k=3):
+    q = f"{query} {district} {state}"
+
+    # BM25 top 10
+    bm_scores = bm25.get_scores(tokenize(q))
+    bm_top = sorted(range(len(bm_scores)), key=lambda i: bm_scores[i], reverse=True)[:10]
+
+    # Vector top 10
+    vec_docs = vectorstore.similarity_search(q, k=10)
+    vec_top = [chunk_index[d.page_content] for d in vec_docs if d.page_content in chunk_index]
+
+    # Reciprocal Rank Fusion
+    fused = {}
+    for ranked in (bm_top, vec_top):
+        for rank, idx in enumerate(ranked):
+            fused[idx] = fused.get(idx, 0) + 1 / (60 + rank)
+
+    # Boost chunks that actually mention the user's district
+    for idx in fused:
+        if district.lower() in chunks[idx].page_content.lower():
+            fused[idx] += 0.05
+
+    best = sorted(fused, key=fused.get, reverse=True)[:k]
+    return [
+        f"[Page {chunks[i].metadata.get('page')}] {chunks[i].page_content}"
+        for i in best
+    ]
+
+
+# ---------------- 4. LLM (Hugging Face Inference API) ----------------
+SYSTEM_PROMPT = (
+    "You are an agriculture assistant for Indian farmers. "
+    "Answer clearly and briefly. Use the provided district knowledge and "
+    "live weather when available. If the answer is not in the context, "
+    "say so instead of guessing."
+)
+
+
+def ask_llm(query, district, state, route, weather, context):
+    global working_model
+
+    parts = [f"Location: {district}, {state}, India"]
+    if weather:
+        parts.append(f"Live weather:\n{weather}")
+    if context:
+        parts.append("District knowledge:\n" + "\n---\n".join(context))
+    parts.append(f"Question: {query}")
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": "\n\n".join(parts)},
+    ]
+
+    # use the model that worked last time, else try them one by one
+    to_try = [working_model] if working_model else MODELS
+
+    for model in to_try:
+        try:
+            response = llm_client.chat_completion(
+                model=model,
+                messages=messages,
+                max_tokens=400,
+                temperature=0.3,
+            )
+            working_model = model
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"{model} failed, trying next")
+
+    return "LLM not reachable, check HF token and enabled providers"
+
+
+# ---------------- 5. AGENT LOOP ----------------
+def run_agent():
+    print("\n=== Agri Agent ===")
+    state = input("Enter your state: ").strip()
+    district = input("Enter your district: ").strip()
+    print(f"Location set to {district}, {state}. Type 'exit' to quit.\n")
+
+    while True:
+        query = input("You: ").strip()
+        if not query:
+            continue
+        if query.lower() in {"exit", "quit"}:
+            break
+
+        t0 = time.time()
+        route = route_query(query, district)
+        print(f"[router] -> {route}")
+
+        weather, context = None, []
+
+        # weather
+        if route in ("WEATHER", "BOTH"):
+            weather = get_weather(district, state)
+            if weather is None:
+                print("[warn] weather unavailable, continuing without it")
+
+        # retrieval
+        if route in ("RETRIEVAL", "BOTH"):
+            context = retrieve(query, district, state)
+
+        # llm
+        answer = ask_llm(query, district, state, route, weather, context)
+
+        print(f"\nAgent: {answer}")
+        print(f"[time: {time.time() - t0:.2f}s]\n")
+
+
+if __name__ == "__main__":
+    run_agent()
