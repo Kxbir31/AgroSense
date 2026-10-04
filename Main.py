@@ -322,7 +322,7 @@ SYSTEM_PROMPT = (
     8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
     9. Keep answers concise, structured, and directly relevant to the question.
 
-    Your priority is to be helpful, accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
+    Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
     """
 )
 
