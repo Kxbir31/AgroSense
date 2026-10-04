@@ -99,8 +99,8 @@ import requests
 from huggingface_hub import InferenceClient
 
 HF_TOKEN = os.getenv("HF_TOKEN")
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-HF_MODEL = os.getenv("HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+OPENWEATHER_API_KEY = os.getenv("30b521e87457bbbcf2445a00ca928b43")
+HF_MODEL = os.getenv("HF_MODEL", "deepseek-ai/DeepSeek-V4.1-Flash")
 
 # no model fixed here, ask_llm tries the models below one by one
 llm_client = InferenceClient(token=HF_TOKEN)
@@ -230,14 +230,14 @@ def get_weather(district, state):
         geo = requests.get(
             "https://api.openweathermap.org/geo/1.0/direct",
             params={"q": f"{district},{state},IN", "limit": 1,
-                    "appid": OPENWEATHER_API_KEY},
+                    "appid": "30b521e87457bbbcf2445a00ca928b43"},
             timeout=5,
         ).json()
         if not geo:
             geo = requests.get(
                 "https://api.openweathermap.org/geo/1.0/direct",
                 params={"q": f"{district},IN", "limit": 1,
-                        "appid": OPENWEATHER_API_KEY},
+                        "appid": "30b521e87457bbbcf2445a00ca928b43"},
                 timeout=5,
             ).json()
         # api gives a dict (not a list) when something is wrong, eg wrong key
@@ -251,7 +251,7 @@ def get_weather(district, state):
         w = requests.get(
             "https://api.openweathermap.org/data/2.5/weather",
             params={"lat": lat, "lon": lon, "units": "metric",
-                    "appid": OPENWEATHER_API_KEY},
+                    "appid": "30b521e87457bbbcf2445a00ca928b43"},
             timeout=5,
         ).json()
         if "main" not in w:
@@ -306,10 +306,24 @@ def retrieve(query, district, state, k=3):
 
 # ---------------- 4. LLM (Hugging Face Inference API) ----------------
 SYSTEM_PROMPT = (
-    "You are an agriculture assistant for Indian farmers. "
-    "Answer clearly and briefly. Use the provided district knowledge and "
-    "live weather when available. If the answer is not in the context, "
-    "say so instead of guessing."
+ """
+    You are AgroAI, a helpful agricultural assistant for Indian farmers.
+
+    Answer the user's question using the provided agricultural documents and live weather data whenever relevant.
+
+    Rules:
+    1. Always try to provide a useful answer. Never return an empty response or refuse merely because the context is incomplete.
+    2. Prioritize retrieved evidence, especially information relevant to the user's state, district, soil, crop, and season.
+    3. If the context provides partial information, answer the supported parts and explain what remains uncertain. You may add relevant general agricultural guidance, but never present unsupported claims as verified facts.
+    4. Never fabricate government data, soil measurements, weather forecasts, fertilizer dosages, pesticide instructions, prices, or scheme eligibility.
+    5. Distinguish current weather from forecasts. If weather data is unavailable, state this briefly.
+    6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
+    7. Cite the supplied source filename and page number when available. Never invent sources or citations.
+    8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
+    9. Keep answers concise, structured, and directly relevant to the question.
+
+    Your priority is to be helpful, accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
+    """
 )
 
 
@@ -331,21 +345,25 @@ def ask_llm(query, district, state, route, weather, context):
     # use the model that worked last time, else try them one by one
     to_try = [working_model] if working_model else MODELS
 
+
     for model in to_try:
         try:
             response = llm_client.chat_completion(
                 model=model,
                 messages=messages,
-                max_tokens=400,
+                max_tokens=1000,
                 temperature=0.3,
             )
+            text = response.choices[0].message.content
+            # reasoning models sometimes return nothing, skip them
+            if not text:
+                print(f"{model} gave an empty answer, trying next")
+                continue
             working_model = model
-            return response.choices[0].message.content
+            print(f"[model] {model}")
+            return text
         except Exception as e:
             print(f"{model} failed, trying next")
-
-    return "LLM not reachable, check HF token and enabled providers"
-
 
 # ---------------- 5. AGENT LOOP ----------------
 def run_agent():
