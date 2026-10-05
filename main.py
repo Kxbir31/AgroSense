@@ -99,7 +99,7 @@ import requests
 from huggingface_hub import InferenceClient
 
 HF_TOKEN = os.getenv("HF_TOKEN")
-OPENWEATHER_API_KEY = os.getenv("30b521e87457bbbcf2445a00ca928b43")
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 HF_MODEL = os.getenv("HF_MODEL", "deepseek-ai/DeepSeek-V4.1-Flash")
 
 # no model fixed here, ask_llm tries the models below one by one
@@ -347,27 +347,39 @@ def ask_llm(query, district, state, route, weather, context):
     # use the model that worked last time, else try them one by one
     to_try = [working_model] if working_model else MODELS
 
-
     for model in to_try:
         try:
             response = llm_client.chat_completion(
-                model=model,
-                messages=messages,
-                max_tokens=1000,
-                temperature=0.3,
+                model=model, messages=messages, max_tokens=1000, temperature=0.3,
             )
             text = response.choices[0].message.content
-            # reasoning models sometimes return nothing, skip them
             if not text:
                 print(f"{model} gave an empty answer, trying next")
                 continue
             working_model = model
             print(f"[model] {model}")
             return text
-        except Exception as e:
+        except Exception:
             print(f"{model} failed, trying next")
+            if model == working_model:
+                working_model = None
+    return None
+
+THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
+
+def process_query(query, district, state, think=False):
+    route = route_query(query, district)
+    weather, context = None, []
+    if route in ("WEATHER", "BOTH"):
+        weather = get_weather(district, state)
+    if route in ("RETRIEVAL", "BOTH"):
+        context = retrieve(query, district, state)
+    llm_query = query + THINK_HINT if think else query
+    answer = ask_llm(llm_query, district, state, route, weather, context)
+    return {"answer": answer, "route": route}
 
 # ---------------- 5. AGENT LOOP ----------------
+
 def run_agent():
     print("\n=== Agri Agent ===")
     state = input("Enter your state: ").strip()
@@ -407,15 +419,3 @@ def run_agent():
 if __name__ == "__main__":
     run_agent()
 
-THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
-
-def process_query(query, district, state, think=False):
-    route = route_query(query, district)
-    weather, context = None, []
-    if route in ("WEATHER", "BOTH"):
-        weather = get_weather(district, state)
-    if route in ("RETRIEVAL", "BOTH"):
-        context = retrieve(query, district, state)
-    llm_query = query + THINK_HINT if think else query
-    answer = ask_llm(llm_query, district, state, route, weather, context)
-    return {"answer": answer, "route": route}
