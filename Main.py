@@ -320,7 +320,7 @@ SYSTEM_PROMPT = (
     6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
     7. Cite the supplied source filename and page number when available. Never invent sources or citations.
     8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
-    9. Keep answers concise, structured, and directly relevant to the question.
+   
 
     Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
     """
@@ -404,3 +404,16 @@ def run_agent():
 
 if __name__ == "__main__":
     run_agent()
+
+THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
+
+def process_query(query, district, state, think=False):
+    route = route_query(query, district)
+    weather, context = None, []
+    if route in ("WEATHER", "BOTH"):
+        weather = get_weather(district, state)
+    if route in ("RETRIEVAL", "BOTH"):
+        context = retrieve(query, district, state)
+    llm_query = query + THINK_HINT if think else query
+    answer = ask_llm(llm_query, district, state, route, weather, context)
+    return {"answer": answer, "route": route}
