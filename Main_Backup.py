@@ -13,12 +13,10 @@ from rank_bm25 import BM25Okapi
 
 load_dotenv()
 
-
-
-#LOAD PDF DOCUMENTS
+# LOAD PDF DOCUMENTS
 
 files = ['India_District_Agri_Master_RAG.pdf'
-]
+         ]
 
 docs = []
 
@@ -34,8 +32,7 @@ for file in files:
 
 print(f"Total pages loaded: {len(docs)}")
 
-
-#SPLIT DOCUMENTS INTO CHUNKS
+# SPLIT DOCUMENTS INTO CHUNKS
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=750,
     chunk_overlap=150
@@ -45,16 +42,12 @@ chunks = text_splitter.split_documents(docs)
 
 print(f"Total chunks created: {len(chunks)}")
 
-
-
-#CREATE EMBEDDINGS
+# CREATE EMBEDDINGS
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-
-
-#STORE CHUNKS IN CHROMADB
+# STORE CHUNKS IN CHROMADB
 import os
 
 # db already saved -> just open it, else build it (stops duplicates on every run)
@@ -73,9 +66,6 @@ else:
     )
 
 
-
-
-
 # CREATE BM25 INDEX
 def tokenize(text):
     """
@@ -91,7 +81,6 @@ tokenized_chunks = [
 ]
 
 bm25 = BM25Okapi(tokenized_chunks)
-
 
 # AGENT: ROUTER + WEATHER + HYBRID RETRIEVAL + HF LLM
 import time
@@ -109,7 +98,6 @@ working_model = None
 
 # Map chunk text -> index, so vector hits can be matched with BM25 indices
 chunk_index = {c.page_content: i for i, c in enumerate(chunks)}
-
 
 # ---------------- 1. ROUTER (keyword based, no LLM call) ----------------
 # weather words
@@ -183,7 +171,7 @@ ADVICE_KW = {
     "recommend", "recommendation", "best", "when", "plan", "planning",
     "ideal", "suitable", "right", "safe", "good", "worth", "ok", "okay",
     "sahi", "sakte", "sakta", "chahiye", "kab", "kya", "kaise", "salah",
-    }
+}
 
 
 def route_query(query, district):
@@ -219,62 +207,60 @@ _weather_cache = {}
 WEATHER_TTL = 600  # seconds
 
 
-def get_weather_data(district, state):
-    if not OPENWEATHER_API_KEY:
-        print("Weather error: OPENWEATHER_API_KEY missing")
-        return None
+def get_weather(district, state):
     key = (district.lower(), state.lower())
     cached = _weather_cache.get(key)
     if cached and time.time() - cached[0] < WEATHER_TTL:
         return cached[1]
+
     try:
+        # Step 1: district -> lat/lon
         geo = requests.get(
             "https://api.openweathermap.org/geo/1.0/direct",
-            params={"q": f"{district},{state},IN", "limit": 1, "appid": OPENWEATHER_API_KEY},
+            params={"q": f"{district},{state},IN", "limit": 1,
+                    "appid": "30b521e87457bbbcf2445a00ca928b43"},
             timeout=5,
         ).json()
         if not geo:
             geo = requests.get(
                 "https://api.openweathermap.org/geo/1.0/direct",
-                params={"q": f"{district},IN", "limit": 1, "appid": OPENWEATHER_API_KEY},
+                params={"q": f"{district},IN", "limit": 1,
+                        "appid": "30b521e87457bbbcf2445a00ca928b43"},
                 timeout=5,
             ).json()
+        # api gives a dict (not a list) when something is wrong, eg wrong key
         if not geo or isinstance(geo, dict):
             print("Weather error:", geo)
             return None
+
         lat, lon = geo[0]["lat"], geo[0]["lon"]
+
+        # Step 2: lat/lon -> current weather
         w = requests.get(
             "https://api.openweathermap.org/data/2.5/weather",
-            params={"lat": lat, "lon": lon, "units": "metric", "appid": OPENWEATHER_API_KEY},
+            params={"lat": lat, "lon": lon, "units": "metric",
+                    "appid": "30b521e87457bbbcf2445a00ca928b43"},
             timeout=5,
         ).json()
         if "main" not in w:
             print("Weather error:", w)
             return None
-        data = {
-            "temp": w["main"]["temp"],
-            "feels_like": w["main"]["feels_like"],
-            "humidity": w["main"]["humidity"],
-            "condition": w["weather"][0]["description"],
-            "wind": w["wind"]["speed"],
-            "rain_1h": w.get("rain", {}).get("1h", 0),
-        }
-        _weather_cache[key] = (time.time(), data)
-        return data
+
+        summary = (
+            f"Temperature: {w['main']['temp']}°C "
+            f"(feels like {w['main']['feels_like']}°C), "
+            f"Humidity: {w['main']['humidity']}%, "
+            f"Condition: {w['weather'][0]['description']}, "
+            f"Wind: {w['wind']['speed']} m/s, "
+            f"Rain (last 1h): {w.get('rain', {}).get('1h', 0)} mm"
+        )
+        _weather_cache[key] = (time.time(), summary)
+        return summary
+
     except Exception as e:
         print("Weather fetch failed:", repr(e))
         return None
 
-
-def get_weather(district, state):
-    d = get_weather_data(district, state)
-    if not d:
-        return None
-    return (
-        f"Temperature: {d['temp']}°C (feels like {d['feels_like']}°C), "
-        f"Humidity: {d['humidity']}%, Condition: {d['condition']}, "
-        f"Wind: {d['wind']} m/s, Rain (last 1h): {d['rain_1h']} mm"
-    )
 
 # ---------------- 3. HYBRID RETRIEVAL (BM25 + Vector, merged with RRF) ----------------
 def retrieve(query, district, state, k=3):
@@ -308,24 +294,24 @@ def retrieve(query, district, state, k=3):
 
 # ---------------- 4. LLM (Hugging Face Inference API) ----------------
 SYSTEM_PROMPT = (
- """
-    You are AgroAI, a helpful agricultural assistant for Indian farmers.
-
-    Answer the user's question using the provided agricultural documents and live weather data whenever relevant.
-
-    Rules:
-    1. Always try to provide a useful answer. Never return an empty response or refuse merely because the context is incomplete.
-    2. Prioritize retrieved evidence, especially information relevant to the user's state, district, soil, crop, and season.
-    3. If the context provides partial information, answer the supported parts and explain what remains uncertain. You may add relevant general agricultural guidance, but never present unsupported claims as verified facts.
-    4. Never fabricate government data, soil measurements, weather forecasts, fertilizer dosages, pesticide instructions, prices, or scheme eligibility.
-    5. Distinguish current weather from forecasts. If weather data is unavailable, state this briefly.
-    6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
-    7. Cite the supplied source filename and page number when available. Never invent sources or citations.
-    8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
-   
-
-    Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
     """
+       You are AgroAI, a helpful agricultural assistant for Indian farmers.
+   
+       Answer the user's question using the provided agricultural documents and live weather data whenever relevant.
+   
+       Rules:
+       1. Always try to provide a useful answer. Never return an empty response or refuse merely because the context is incomplete.
+       2. Prioritize retrieved evidence, especially information relevant to the user's state, district, soil, crop, and season.
+       3. If the context provides partial information, answer the supported parts and explain what remains uncertain. You may add relevant general agricultural guidance, but never present unsupported claims as verified facts.
+       4. Never fabricate government data, soil measurements, weather forecasts, fertilizer dosages, pesticide instructions, prices, or scheme eligibility.
+       5. Distinguish current weather from forecasts. If weather data is unavailable, state this briefly.
+       6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
+       7. Cite the supplied source filename and page number when available. Never invent sources or citations.
+       8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
+   
+   
+       Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
+       """
 )
 
 
@@ -347,7 +333,6 @@ def ask_llm(query, district, state, route, weather, context):
     # use the model that worked last time, else try them one by one
     to_try = [working_model] if working_model else MODELS
 
-
     for model in to_try:
         try:
             response = llm_client.chat_completion(
@@ -366,6 +351,7 @@ def ask_llm(query, district, state, route, weather, context):
             return text
         except Exception as e:
             print(f"{model} failed, trying next")
+
 
 # ---------------- 5. AGENT LOOP ----------------
 def run_agent():
@@ -408,6 +394,7 @@ if __name__ == "__main__":
     run_agent()
 
 THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
+
 
 def process_query(query, district, state, think=False):
     route = route_query(query, district)
