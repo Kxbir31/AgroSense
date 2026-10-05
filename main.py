@@ -13,12 +13,10 @@ from rank_bm25 import BM25Okapi
 
 load_dotenv()
 
-
-
-#LOAD PDF DOCUMENTS
+# LOAD PDF DOCUMENTS
 
 files = ['India_District_Agri_Master_RAG.pdf'
-]
+         ]
 
 docs = []
 
@@ -34,8 +32,7 @@ for file in files:
 
 print(f"Total pages loaded: {len(docs)}")
 
-
-#SPLIT DOCUMENTS INTO CHUNKS
+# SPLIT DOCUMENTS INTO CHUNKS
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=750,
     chunk_overlap=150
@@ -45,16 +42,12 @@ chunks = text_splitter.split_documents(docs)
 
 print(f"Total chunks created: {len(chunks)}")
 
-
-
-#CREATE EMBEDDINGS
+# CREATE EMBEDDINGS
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-
-
-#STORE CHUNKS IN CHROMADB
+# STORE CHUNKS IN CHROMADB
 import os
 
 # db already saved -> just open it, else build it (stops duplicates on every run)
@@ -73,9 +66,6 @@ else:
     )
 
 
-
-
-
 # CREATE BM25 INDEX
 def tokenize(text):
     """
@@ -91,7 +81,6 @@ tokenized_chunks = [
 ]
 
 bm25 = BM25Okapi(tokenized_chunks)
-
 
 # AGENT: ROUTER + WEATHER + HYBRID RETRIEVAL + HF LLM
 import time
@@ -109,7 +98,6 @@ working_model = None
 
 # Map chunk text -> index, so vector hits can be matched with BM25 indices
 chunk_index = {c.page_content: i for i, c in enumerate(chunks)}
-
 
 # ---------------- 1. ROUTER (keyword based, no LLM call) ----------------
 # weather words
@@ -183,7 +171,7 @@ ADVICE_KW = {
     "recommend", "recommendation", "best", "when", "plan", "planning",
     "ideal", "suitable", "right", "safe", "good", "worth", "ok", "okay",
     "sahi", "sakte", "sakta", "chahiye", "kab", "kya", "kaise", "salah",
-    }
+}
 
 
 def route_query(query, district):
@@ -276,6 +264,7 @@ def get_weather(district, state):
         f"Wind: {d['wind']} m/s, Rain (last 1h): {d['rain_1h']} mm"
     )
 
+
 # ---------------- 3. HYBRID RETRIEVAL (BM25 + Vector, merged with RRF) ----------------
 def retrieve(query, district, state, k=3):
     q = f"{query} {district} {state}"
@@ -308,31 +297,35 @@ def retrieve(query, district, state, k=3):
 
 # ---------------- 4. LLM (Hugging Face Inference API) ----------------
 SYSTEM_PROMPT = (
- """
-    You are AgroAI, a helpful agricultural assistant for Indian farmers.
-
-    Answer the user's question using the provided agricultural documents and live weather data whenever relevant.
-
-    Rules:
-    1. Always try to provide a useful answer. Never return an empty response or refuse merely because the context is incomplete.
-    2. Prioritize retrieved evidence, especially information relevant to the user's state, district, soil, crop, and season.
-    3. If the context provides partial information, answer the supported parts and explain what remains uncertain. You may add relevant general agricultural guidance, but never present unsupported claims as verified facts.
-    4. Never fabricate government data, soil measurements, weather forecasts, fertilizer dosages, pesticide instructions, prices, or scheme eligibility.
-    5. Distinguish current weather from forecasts. If weather data is unavailable, state this briefly.
-    6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
-    7. Cite the supplied source filename and page number when available. Never invent sources or citations.
-    8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
-   
-
-    Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
     """
+       You are AgroAI, a helpful agricultural assistant for Indian farmers.
+   
+       Answer the user's question using the provided agricultural documents and live weather data whenever relevant.
+   
+       Rules:
+       1. Always try to provide a useful answer. Never return an empty response or refuse merely because the context is incomplete.
+       2. Prioritize retrieved evidence, especially information relevant to the user's state, district, soil, crop, and season.
+       3. If the context provides partial information, answer the supported parts and explain what remains uncertain. You may add relevant general agricultural guidance, but never present unsupported claims as verified facts.
+       4. Never fabricate government data, soil measurements, weather forecasts, fertilizer dosages, pesticide instructions, prices, or scheme eligibility.
+       5. Distinguish current weather from forecasts. If weather data is unavailable, state this briefly.
+       6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
+       7. Cite the supplied source filename and page number when available. Never invent sources or citations.
+       8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
+       9. If a summary of the user's earlier messages is given, use it to understand follow-up questions (like "what about tomorrow?"), but do not treat it as verified agricultural data.
+   
+   
+       Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
+       """
 )
 
 
-def ask_llm(query, district, state, route, weather, context):
+def ask_llm(query, district, state, route, weather, context, memory=None):
     global working_model
 
     parts = [f"Location: {district}, {state}, India"]
+    # summary of the user's last few messages (memory)
+    if memory:
+        parts.append(f"Summary of user's previous messages:\n{memory}")
     if weather:
         parts.append(f"Live weather:\n{weather}")
     if context:
@@ -365,9 +358,70 @@ def ask_llm(query, district, state, route, weather, context):
                 working_model = None
     return None
 
+
+# ---------------- 4.5 MEMORY (summary of the last 5 user messages) ----------------
+MEMORY_SIZE = 5
+# one entry per session, so different users on the server don't mix up
+user_memory = {}
+
+
+def get_memory(session_id="default"):
+    if session_id not in user_memory:
+        user_memory[session_id] = {"messages": [], "summary": ""}
+    return user_memory[session_id]
+
+
+def summarize_messages(messages):
+    """Ask the LLM to squeeze the last few user messages into a short summary."""
+    global working_model
+
+    if not messages:
+        return ""
+
+    numbered = "\n".join(f"{i + 1}. {m}" for i, m in enumerate(messages))
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "You summarise a farmer's recent messages to an agriculture assistant. "
+                "Write 2-3 short sentences covering the crops, problems, farming actions "
+                "and any details (like land size or season) the farmer mentioned. "
+                "Only use what the farmer said. Do not add advice."
+            ),
+        },
+        {"role": "user", "content": f"Farmer's recent messages:\n{numbered}"},
+    ]
+
+    to_try = [working_model] if working_model else MODELS
+    for model in to_try:
+        try:
+            response = llm_client.chat_completion(
+                model=model, messages=prompt, max_tokens=200, temperature=0.2,
+            )
+            text = response.choices[0].message.content
+            if text:
+                working_model = model
+                return text.strip()
+        except Exception:
+            print(f"[memory] {model} failed, trying next")
+            if model == working_model:
+                working_model = None
+
+    # llm not reachable -> just keep the raw messages so memory is not lost
+    return " | ".join(messages)
+
+
+def update_memory(session_id, query):
+    mem = get_memory(session_id)
+    mem["messages"].append(query)
+    mem["messages"] = mem["messages"][-MEMORY_SIZE:]  # keep only last 5
+    mem["summary"] = summarize_messages(mem["messages"])
+
+
 THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
 
-def process_query(query, district, state, think=False):
+
+def process_query(query, district, state, think=False, session_id="default"):
     route = route_query(query, district)
     weather, context = None, []
     if route in ("WEATHER", "BOTH"):
@@ -375,8 +429,12 @@ def process_query(query, district, state, think=False):
     if route in ("RETRIEVAL", "BOTH"):
         context = retrieve(query, district, state)
     llm_query = query + THINK_HINT if think else query
-    answer = ask_llm(llm_query, district, state, route, weather, context)
+    memory = get_memory(session_id)["summary"]
+    answer = ask_llm(llm_query, district, state, route, weather, context, memory)
+    # save this message only after answering, so memory holds the *previous* messages
+    update_memory(session_id, query)
     return {"answer": answer, "route": route}
+
 
 # ---------------- 5. AGENT LOOP ----------------
 
@@ -409,8 +467,10 @@ def run_agent():
         if route in ("RETRIEVAL", "BOTH"):
             context = retrieve(query, district, state)
 
-        # llm
-        answer = ask_llm(query, district, state, route, weather, context)
+        # llm (with summary of the last 5 user messages)
+        memory = get_memory()["summary"]
+        answer = ask_llm(query, district, state, route, weather, context, memory)
+        update_memory("default", query)
 
         print(f"\nAgent: {answer}")
         print(f"[time: {time.time() - t0:.2f}s]\n")
@@ -419,4 +479,4 @@ def run_agent():
 if __name__ == "__main__":
     run_agent()
 
-#uvicorn server:app --host 127.0.0.1 --port 8000
+# uvicorn server:app --host 127.0.0.1 --port 8000
