@@ -34,7 +34,7 @@ print(f"Total pages loaded: {len(docs)}")
 
 # SPLIT DOCUMENTS INTO CHUNKS
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=750,
+    chunk_size=2500,
     chunk_overlap=150
 )
 
@@ -89,11 +89,11 @@ from huggingface_hub import InferenceClient
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-HF_MODEL = os.getenv("HF_MODEL", "deepseek-ai/DeepSeek-V4.1-Flash")
+HF_MODEL = os.getenv("HF_MODEL", "google/gemma-4-31B-it")
 
 # no model fixed here, ask_llm tries the models below one by one
 llm_client = InferenceClient(token=HF_TOKEN)
-MODELS = [HF_MODEL, "meta-llama/Llama-3.1-8B-Instruct", "Qwen/Qwen2.5-72B-Instruct", "openai/gpt-oss-20b"]
+MODELS = [HF_MODEL, "deepseek-ai/DeepSeek-V4.1-Flash", "meta-llama/Llama-3.1-8B-Instruct", "openai/gpt-oss-20b"]
 working_model = None
 
 # Map chunk text -> index, so vector hits can be matched with BM25 indices
@@ -273,8 +273,8 @@ def retrieve(query, district, state, k=3):
     bm_scores = bm25.get_scores(tokenize(q))
     bm_top = sorted(range(len(bm_scores)), key=lambda i: bm_scores[i], reverse=True)[:10]
 
-    # Vector top 10
-    vec_docs = vectorstore.similarity_search(q, k=10)
+    # Vector top 1
+    vec_docs = vectorstore.similarity_search(q, k=1)
     vec_top = [chunk_index[d.page_content] for d in vec_docs if d.page_content in chunk_index]
 
     # Reciprocal Rank Fusion
@@ -298,23 +298,35 @@ def retrieve(query, district, state, k=3):
 # ---------------- 4. LLM (Hugging Face Inference API) ----------------
 SYSTEM_PROMPT = (
     """
-       You are AgroAI, a helpful agricultural assistant for Indian farmers.
-   
-       Answer the user's question using the provided agricultural documents and live weather data whenever relevant.
-   
-       Rules:
-       1. Always try to provide a useful answer. Never return an empty response or refuse merely because the context is incomplete.
-       2. Prioritize retrieved evidence, especially information relevant to the user's state, district, soil, crop, and season.
-       3. If the context provides partial information, answer the supported parts and explain what remains uncertain. You may add relevant general agricultural guidance, but never present unsupported claims as verified facts.
-       4. Never fabricate government data, soil measurements, weather forecasts, fertilizer dosages, pesticide instructions, prices, or scheme eligibility.
-       5. Distinguish current weather from forecasts. If weather data is unavailable, state this briefly.
-       6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
-       7. Cite the supplied source filename and page number when available. Never invent sources or citations.
-       8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
-       9. If a summary of the user's earlier messages is given, use it to understand follow-up questions (like "what about tomorrow?"), but do not treat it as verified agricultural data.
-   
-   
-       Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
+      
+        You are AgroAI, a trustworthy agricultural assistant for Indian farmers.
+
+        Use retrieved agricultural documents, user information, and live weather data when available.
+        
+        RULES:
+        1. Evidence first. Prefer retrieved sources and preserve their location, year, season, metric and units.
+        2. NEVER confuse geographic levels. State-level data cannot prove district-level facts; a soil sample/study cannot represent an entire district unless explicitly stated.
+        3. Never invent statistics, soil values, weather, prices, yields, profitability, dosages, schemes or citations.
+        4. If the retrieved evidence directly answers the question, give the verified answer.
+        5. If evidence is incomplete, do NOT stop at "cannot be determined." Give:
+           - "Verified from provided data:" what the evidence supports.
+           - "Suggestive information:" a clearly labelled general/external indication that may help the user, but is NOT verified by the retrieved documents.
+        6. Never call a crop "most profitable", "best", or "most grown" unless the evidence supports that exact claim.
+        7. For profitability, distinguish price from profit. Profit requires factors such as yield, selling price and cultivation cost.
+        8. If external/web information is available, identify it as external information and never present it as retrieved government data. If web information is unavailable, use only clearly labelled general agricultural knowledge.
+        9. Distinguish current weather, forecast, historical weather and climate averages.
+        10. For chemical/fertilizer/pesticide advice, never invent doses or safety instructions.
+        11. Cite supplied filename/page when available. Never invent citations.
+        12. Ask follow-up questions only when essential.
+        
+        Before answering, check:
+        LOCATION → YEAR → SEASON → METRIC → UNITS → SOURCE → EVIDENCE.
+        
+        
+        Priority:
+        ACCURACY > EVIDENCE > TRANSPARENCY > HELPFULNESS.
+
+       In last translate the whole message in hindi with a heading of Hindi .
        """
 )
 
@@ -474,6 +486,104 @@ def run_agent():
 
         print(f"\nAgent: {answer}")
         print(f"[time: {time.time() - t0:.2f}s]\n")
+
+# VOICE INPUT
+import tempfile
+from gnani.stt import GnaniSTTClient
+from deep_translator import GoogleTranslator
+
+GNANI_API_KEY = os.getenv("GNANI_API_KEY")
+_stt_client = None
+
+
+def _get_stt_client():
+    global _stt_client
+    if _stt_client is None:
+        _stt_client = GnaniSTTClient(api_key=GNANI_API_KEY)
+    return _stt_client
+
+from deep_translator import MyMemoryTranslator
+
+
+def translate_hi_to_en(text):
+    """Hindi -> English with fallbacks, so one blocked service doesn't break voice."""
+    global working_model
+
+    # 1. Official Google Cloud Translation (only if you set GOOGLE_TRANSLATE_API_KEY in .env)
+    gkey = os.getenv("GOOGLE_TRANSLATE_API_KEY")
+    if gkey:
+        try:
+            r = requests.post(
+                "https://translation.googleapis.com/language/translate/v2",
+                params={"key": gkey},
+                json={"q": text, "source": "hi", "target": "en", "format": "text"},
+                timeout=8,
+            )
+            return r.json()["data"]["translations"][0]["translatedText"]
+        except Exception as e:
+            print("[translate] Google Cloud failed:", repr(e))
+
+    # 2. Free Google web endpoint (one retry)
+    for _ in range(2):
+        try:
+            return GoogleTranslator(source="hi", target="en").translate(text)
+        except Exception as e:
+            print("[translate] free Google failed:", repr(e))
+            time.sleep(1.5)
+
+    # 3. MyMemory (free, no key)
+    try:
+        return MyMemoryTranslator(source="hi-IN", target="en-GB").translate(text)
+    except Exception as e:
+        print("[translate] MyMemory failed:", repr(e))
+
+    # 4. Your own Hugging Face LLM as a last resort
+    for model in ([working_model] if working_model else MODELS):
+        try:
+            resp = llm_client.chat_completion(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "Translate the Hindi text to English. Output only the translation, nothing else."},
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=300, temperature=0,
+            )
+            out = resp.choices[0].message.content
+            if out:
+                working_model = model
+                return out.strip()
+        except Exception as e:
+            print(f"[translate] {model} failed:", repr(e))
+            if model == working_model:
+                working_model = None
+
+    raise RuntimeError("All translation methods failed")
+
+def voice_to_english(audio_bytes, language_code="hi-IN"):
+    """WAV bytes -> (hindi_text, english_text)"""
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(audio_bytes)
+        path = f.name
+    try:
+        result = _get_stt_client().transcribe(path, language_code=language_code)
+    finally:
+        os.remove(path)
+
+    hindi = (result.get("transcript") or "").strip()
+    if not hindi:
+        return "", ""
+    english = translate_hi_to_en(hindi)
+    return hindi, english
+
+
+def process_voice_query(audio_bytes, district, state, think=False, session_id="default"):
+    hindi, english = voice_to_english(audio_bytes)
+    if not english:
+        return {"error": "Could not understand the audio. Please try again."}
+    out = process_query(english, district, state, think=think, session_id=session_id)
+    out["transcript"] = hindi
+    out["translated"] = english
+    return out
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import re
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form   # <-- CHANGE 1: added UploadFile, File, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -62,6 +62,43 @@ def chat(body: ChatIn):
     if not result.get("answer"):
         return bad("The AI service is busy right now. Please try again in a moment.", 503)
     return {"answer": result["answer"], "route": result["route"]}
+
+
+# ===== CHANGE 2: NEW VOICE ROUTE (paste this whole block) =====
+@app.post("/api/voice")
+def voice(
+    audio: UploadFile = File(...),
+    state: str = Form(...),
+    district: str = Form(...),
+    think: str = Form("false"),
+):
+    district = district.strip()
+    if not valid_location(state, district):
+        return bad("Please choose a valid state and district.")
+
+    data = audio.file.read()
+    if not data:
+        return bad("No audio received. Please try again.")
+    if len(data) > 5 * 1024 * 1024:
+        return bad("Audio is too long. Please speak a shorter question.")
+
+    try:
+        result = main.process_voice_query(data, district, state, think=(think.lower() == "true"))
+    except Exception:
+        log.exception("voice failure")
+        return bad("Could not process your voice. Please try again.", 502)
+
+    if result.get("error"):
+        return bad(result["error"])
+    if not result.get("answer"):
+        return bad("The AI service is busy right now. Please try again in a moment.", 503)
+    return {
+        "answer": result["answer"],
+        "route": result["route"],
+        "transcript": result["transcript"],
+        "translated": result["translated"],
+    }
+# ===== END OF CHANGE 2 =====
 
 
 @app.get("/api/weather")
