@@ -34,7 +34,7 @@ print(f"Total pages loaded: {len(docs)}")
 
 # SPLIT DOCUMENTS INTO CHUNKS
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=750,
+    chunk_size=2500,
     chunk_overlap=150
 )
 
@@ -88,12 +88,12 @@ import requests
 from huggingface_hub import InferenceClient
 
 HF_TOKEN = os.getenv("HF_TOKEN")
-OPENWEATHER_API_KEY = os.getenv("30b521e87457bbbcf2445a00ca928b43")
-HF_MODEL = os.getenv("HF_MODEL", "deepseek-ai/DeepSeek-V4.1-Flash")
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+HF_MODEL = os.getenv("HF_MODEL", "google/gemma-4-31B-it")
 
 # no model fixed here, ask_llm tries the models below one by one
 llm_client = InferenceClient(token=HF_TOKEN)
-MODELS = [HF_MODEL, "meta-llama/Llama-3.1-8B-Instruct", "Qwen/Qwen2.5-72B-Instruct", "openai/gpt-oss-20b"]
+MODELS = [HF_MODEL, "deepseek-ai/DeepSeek-V4.1-Flash", "meta-llama/Llama-3.1-8B-Instruct", "openai/gpt-oss-20b"]
 working_model = None
 
 # Map chunk text -> index, so vector hits can be matched with BM25 indices
@@ -207,59 +207,62 @@ _weather_cache = {}
 WEATHER_TTL = 600  # seconds
 
 
-def get_weather(district, state):
+def get_weather_data(district, state):
+    if not OPENWEATHER_API_KEY:
+        print("Weather error: OPENWEATHER_API_KEY missing")
+        return None
     key = (district.lower(), state.lower())
     cached = _weather_cache.get(key)
     if cached and time.time() - cached[0] < WEATHER_TTL:
         return cached[1]
-
     try:
-        # Step 1: district -> lat/lon
         geo = requests.get(
             "https://api.openweathermap.org/geo/1.0/direct",
-            params={"q": f"{district},{state},IN", "limit": 1,
-                    "appid": "30b521e87457bbbcf2445a00ca928b43"},
+            params={"q": f"{district},{state},IN", "limit": 1, "appid": OPENWEATHER_API_KEY},
             timeout=5,
         ).json()
         if not geo:
             geo = requests.get(
                 "https://api.openweathermap.org/geo/1.0/direct",
-                params={"q": f"{district},IN", "limit": 1,
-                        "appid": "30b521e87457bbbcf2445a00ca928b43"},
+                params={"q": f"{district},IN", "limit": 1, "appid": OPENWEATHER_API_KEY},
                 timeout=5,
             ).json()
-        # api gives a dict (not a list) when something is wrong, eg wrong key
         if not geo or isinstance(geo, dict):
             print("Weather error:", geo)
             return None
-
         lat, lon = geo[0]["lat"], geo[0]["lon"]
-
-        # Step 2: lat/lon -> current weather
         w = requests.get(
             "https://api.openweathermap.org/data/2.5/weather",
-            params={"lat": lat, "lon": lon, "units": "metric",
-                    "appid": "30b521e87457bbbcf2445a00ca928b43"},
+            params={"lat": lat, "lon": lon, "units": "metric", "appid": OPENWEATHER_API_KEY},
             timeout=5,
         ).json()
         if "main" not in w:
             print("Weather error:", w)
             return None
-
-        summary = (
-            f"Temperature: {w['main']['temp']}°C "
-            f"(feels like {w['main']['feels_like']}°C), "
-            f"Humidity: {w['main']['humidity']}%, "
-            f"Condition: {w['weather'][0]['description']}, "
-            f"Wind: {w['wind']['speed']} m/s, "
-            f"Rain (last 1h): {w.get('rain', {}).get('1h', 0)} mm"
-        )
-        _weather_cache[key] = (time.time(), summary)
-        return summary
-
+        data = {
+            "temp": w["main"]["temp"],
+            "feels_like": w["main"]["feels_like"],
+            "humidity": w["main"]["humidity"],
+            "condition": w["weather"][0]["description"],
+            "wind": w["wind"]["speed"],
+            "rain_1h": w.get("rain", {}).get("1h", 0),
+        }
+        _weather_cache[key] = (time.time(), data)
+        return data
     except Exception as e:
         print("Weather fetch failed:", repr(e))
         return None
+
+
+def get_weather(district, state):
+    d = get_weather_data(district, state)
+    if not d:
+        return None
+    return (
+        f"Temperature: {d['temp']}°C (feels like {d['feels_like']}°C), "
+        f"Humidity: {d['humidity']}%, Condition: {d['condition']}, "
+        f"Wind: {d['wind']} m/s, Rain (last 1h): {d['rain_1h']} mm"
+    )
 
 
 # ---------------- 3. HYBRID RETRIEVAL (BM25 + Vector, merged with RRF) ----------------
@@ -270,8 +273,8 @@ def retrieve(query, district, state, k=3):
     bm_scores = bm25.get_scores(tokenize(q))
     bm_top = sorted(range(len(bm_scores)), key=lambda i: bm_scores[i], reverse=True)[:10]
 
-    # Vector top 10
-    vec_docs = vectorstore.similarity_search(q, k=10)
+    # Vector top 1
+    vec_docs = vectorstore.similarity_search(q, k=1)
     vec_top = [chunk_index[d.page_content] for d in vec_docs if d.page_content in chunk_index]
 
     # Reciprocal Rank Fusion
@@ -295,30 +298,46 @@ def retrieve(query, district, state, k=3):
 # ---------------- 4. LLM (Hugging Face Inference API) ----------------
 SYSTEM_PROMPT = (
     """
-       You are AgroAI, a helpful agricultural assistant for Indian farmers.
-   
-       Answer the user's question using the provided agricultural documents and live weather data whenever relevant.
-   
-       Rules:
-       1. Always try to provide a useful answer. Never return an empty response or refuse merely because the context is incomplete.
-       2. Prioritize retrieved evidence, especially information relevant to the user's state, district, soil, crop, and season.
-       3. If the context provides partial information, answer the supported parts and explain what remains uncertain. You may add relevant general agricultural guidance, but never present unsupported claims as verified facts.
-       4. Never fabricate government data, soil measurements, weather forecasts, fertilizer dosages, pesticide instructions, prices, or scheme eligibility.
-       5. Distinguish current weather from forecasts. If weather data is unavailable, state this briefly.
-       6. Give practical, clear advice in simple language. For agricultural recommendations, consider relevant local conditions and safety precautions.
-       7. Cite the supplied source filename and page number when available. Never invent sources or citations.
-       8. Ask follow-up questions only when essential information is missing. Provide useful general guidance in the meantime.
-   
-   
-       Your priority is to be helpful, Accurate, transparent, and safe. Provide the best answer supported by the available evidence without inventing missing information.
+
+        You are AgroAI, a trustworthy agricultural assistant for Indian farmers.
+
+        Use retrieved agricultural documents, user information, and live weather data when available.
+
+        RULES:
+        1. Evidence first. Prefer retrieved sources and preserve their location, year, season, metric and units.
+        2. NEVER confuse geographic levels. State-level data cannot prove district-level facts; a soil sample/study cannot represent an entire district unless explicitly stated.
+        3. Never invent statistics, soil values, weather, prices, yields, profitability, dosages, schemes or citations.
+        4. If the retrieved evidence directly answers the question, give the verified answer.
+        5. If evidence is incomplete, do NOT stop at "cannot be determined." Give:
+           - "Verified from provided data:" what the evidence supports.
+           - "Suggestive information:" a clearly labelled general/external indication that may help the user, but is NOT verified by the retrieved documents.
+        6. Never call a crop "most profitable", "best", or "most grown" unless the evidence supports that exact claim.
+        7. For profitability, distinguish price from profit. Profit requires factors such as yield, selling price and cultivation cost.
+        8. If external/web information is available, identify it as external information and never present it as retrieved government data. If web information is unavailable, use only clearly labelled general agricultural knowledge.
+        9. Distinguish current weather, forecast, historical weather and climate averages.
+        10. For chemical/fertilizer/pesticide advice, never invent doses or safety instructions.
+        11. Cite supplied filename/page when available. Never invent citations.
+        12. Ask follow-up questions only when essential.
+
+        Before answering, check:
+        LOCATION → YEAR → SEASON → METRIC → UNITS → SOURCE → EVIDENCE.
+
+
+        Priority:
+        ACCURACY > EVIDENCE > TRANSPARENCY > HELPFULNESS.
+
+       In last translate the whole message in hindi with a heading of Hindi .
        """
 )
 
 
-def ask_llm(query, district, state, route, weather, context):
+def ask_llm(query, district, state, route, weather, context, memory=None):
     global working_model
 
     parts = [f"Location: {district}, {state}, India"]
+    # summary of the user's last few messages (memory)
+    if memory:
+        parts.append(f"Summary of user's previous messages:\n{memory}")
     if weather:
         parts.append(f"Live weather:\n{weather}")
     if context:
@@ -336,24 +355,101 @@ def ask_llm(query, district, state, route, weather, context):
     for model in to_try:
         try:
             response = llm_client.chat_completion(
-                model=model,
-                messages=messages,
-                max_tokens=1000,
-                temperature=0.3,
+                model=model, messages=messages, max_tokens=1000, temperature=0.3,
             )
             text = response.choices[0].message.content
-            # reasoning models sometimes return nothing, skip them
             if not text:
                 print(f"{model} gave an empty answer, trying next")
                 continue
             working_model = model
             print(f"[model] {model}")
             return text
-        except Exception as e:
+        except Exception:
             print(f"{model} failed, trying next")
+            if model == working_model:
+                working_model = None
+    return None
+
+
+# ---------------- 4.5 MEMORY (summary of the last 5 user messages) ----------------
+MEMORY_SIZE = 5
+# one entry per session, so different users on the server don't mix up
+user_memory = {}
+
+
+def get_memory(session_id="default"):
+    if session_id not in user_memory:
+        user_memory[session_id] = {"messages": [], "summary": ""}
+    return user_memory[session_id]
+
+
+def summarize_messages(messages):
+    """Ask the LLM to squeeze the last few user messages into a short summary."""
+    global working_model
+
+    if not messages:
+        return ""
+
+    numbered = "\n".join(f"{i + 1}. {m}" for i, m in enumerate(messages))
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "You summarise a farmer's recent messages to an agriculture assistant. "
+                "Write 2-3 short sentences covering the crops, problems, farming actions "
+                "and any details (like land size or season) the farmer mentioned. "
+                "Only use what the farmer said. Do not add advice."
+            ),
+        },
+        {"role": "user", "content": f"Farmer's recent messages:\n{numbered}"},
+    ]
+
+    to_try = [working_model] if working_model else MODELS
+    for model in to_try:
+        try:
+            response = llm_client.chat_completion(
+                model=model, messages=prompt, max_tokens=200, temperature=0.2,
+            )
+            text = response.choices[0].message.content
+            if text:
+                working_model = model
+                return text.strip()
+        except Exception:
+            print(f"[memory] {model} failed, trying next")
+            if model == working_model:
+                working_model = None
+
+    # llm not reachable -> just keep the raw messages so memory is not lost
+    return " | ".join(messages)
+
+
+def update_memory(session_id, query):
+    mem = get_memory(session_id)
+    mem["messages"].append(query)
+    mem["messages"] = mem["messages"][-MEMORY_SIZE:]  # keep only last 5
+    mem["summary"] = summarize_messages(mem["messages"])
+
+
+THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
+
+
+def process_query(query, district, state, think=False, session_id="default"):
+    route = route_query(query, district)
+    weather, context = None, []
+    if route in ("WEATHER", "BOTH"):
+        weather = get_weather(district, state)
+    if route in ("RETRIEVAL", "BOTH"):
+        context = retrieve(query, district, state)
+    llm_query = query + THINK_HINT if think else query
+    memory = get_memory(session_id)["summary"]
+    answer = ask_llm(llm_query, district, state, route, weather, context, memory)
+    # save this message only after answering, so memory holds the *previous* messages
+    update_memory(session_id, query)
+    return {"answer": answer, "route": route}
 
 
 # ---------------- 5. AGENT LOOP ----------------
+
 def run_agent():
     print("\n=== Agri Agent ===")
     state = input("Enter your state: ").strip()
@@ -383,26 +479,118 @@ def run_agent():
         if route in ("RETRIEVAL", "BOTH"):
             context = retrieve(query, district, state)
 
-        # llm
-        answer = ask_llm(query, district, state, route, weather, context)
+        # llm (with summary of the last 5 user messages)
+        memory = get_memory()["summary"]
+        answer = ask_llm(query, district, state, route, weather, context, memory)
+        update_memory("default", query)
 
         print(f"\nAgent: {answer}")
         print(f"[time: {time.time() - t0:.2f}s]\n")
 
 
+# VOICE INPUT
+import tempfile
+from gnani.stt import GnaniSTTClient
+from deep_translator import GoogleTranslator
+
+GNANI_API_KEY = os.getenv("GNANI_API_KEY")
+_stt_client = None
+
+
+def _get_stt_client():
+    global _stt_client
+    if _stt_client is None:
+        _stt_client = GnaniSTTClient(api_key=GNANI_API_KEY)
+    return _stt_client
+
+
+from deep_translator import MyMemoryTranslator
+
+
+def translate_hi_to_en(text):
+    """Hindi -> English with fallbacks, so one blocked service doesn't break voice."""
+    global working_model
+
+    # 1. Official Google Cloud Translation (only if you set GOOGLE_TRANSLATE_API_KEY in .env)
+    gkey = os.getenv("GOOGLE_TRANSLATE_API_KEY")
+    if gkey:
+        try:
+            r = requests.post(
+                "https://translation.googleapis.com/language/translate/v2",
+                params={"key": gkey},
+                json={"q": text, "source": "hi", "target": "en", "format": "text"},
+                timeout=8,
+            )
+            return r.json()["data"]["translations"][0]["translatedText"]
+        except Exception as e:
+            print("[translate] Google Cloud failed:", repr(e))
+
+    # 2. Free Google web endpoint (one retry)
+    for _ in range(2):
+        try:
+            return GoogleTranslator(source="hi", target="en").translate(text)
+        except Exception as e:
+            print("[translate] free Google failed:", repr(e))
+            time.sleep(1.5)
+
+    # 3. MyMemory (free, no key)
+    try:
+        return MyMemoryTranslator(source="hi-IN", target="en-GB").translate(text)
+    except Exception as e:
+        print("[translate] MyMemory failed:", repr(e))
+
+    # 4. Your own Hugging Face LLM as a last resort
+    for model in ([working_model] if working_model else MODELS):
+        try:
+            resp = llm_client.chat_completion(
+                model=model,
+                messages=[
+                    {"role": "system",
+                     "content": "Translate the Hindi text to English. Output only the translation, nothing else."},
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=300, temperature=0,
+            )
+            out = resp.choices[0].message.content
+            if out:
+                working_model = model
+                return out.strip()
+        except Exception as e:
+            print(f"[translate] {model} failed:", repr(e))
+            if model == working_model:
+                working_model = None
+
+    raise RuntimeError("All translation methods failed")
+
+
+def voice_to_english(audio_bytes, language_code="hi-IN"):
+    """WAV bytes -> (hindi_text, english_text)"""
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(audio_bytes)
+        path = f.name
+    try:
+        result = _get_stt_client().transcribe(path, language_code=language_code)
+    finally:
+        os.remove(path)
+
+    hindi = (result.get("transcript") or "").strip()
+    if not hindi:
+        return "", ""
+    english = translate_hi_to_en(hindi)
+    return hindi, english
+
+
+def process_voice_query(audio_bytes, district, state, think=False, session_id="default"):
+    hindi, english = voice_to_english(audio_bytes)
+    if not english:
+        return {"error": "Could not understand the audio. Please try again."}
+    out = process_query(english, district, state, think=think, session_id=session_id)
+    out["transcript"] = hindi
+    out["translated"] = english
+    return out
+
+
 if __name__ == "__main__":
     run_agent()
 
-THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
-
-
-def process_query(query, district, state, think=False):
-    route = route_query(query, district)
-    weather, context = None, []
-    if route in ("WEATHER", "BOTH"):
-        weather = get_weather(district, state)
-    if route in ("RETRIEVAL", "BOTH"):
-        context = retrieve(query, district, state)
-    llm_query = query + THINK_HINT if think else query
-    answer = ask_llm(llm_query, district, state, route, weather, context)
-    return {"answer": answer, "route": route}
+# uvicorn server:app --host 127.0.0.1 --port 8000
