@@ -433,7 +433,7 @@ def call_llm(messages, max_tokens, temperature, log=False):
 def ask_llm(query, district, state, route, weather, context, memory=None):
     parts = [f"Location: {district}, {state}, India"]
     if memory:
-        parts.append(f"Summary of user's previous messages:\n{memory}")
+        parts.append(f"Summary of user's previous messages :\n{memory}")
     if weather:
         parts.append(f"Live weather:\n{weather}")
     if context:
