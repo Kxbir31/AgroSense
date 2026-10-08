@@ -17,7 +17,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
-load_dotenv()
+load_dotenv(override=True)
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")

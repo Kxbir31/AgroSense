@@ -2,7 +2,7 @@ import logging
 import re
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 from fastapi import FastAPI, UploadFile, File, Form   # <-- CHANGE 1: added UploadFile, File, Form
 from fastapi.responses import FileResponse, JSONResponse
