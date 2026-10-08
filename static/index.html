@@ -95,22 +95,35 @@ body.chatting .brand{font-size:32px;top:22px}
 
 /* ================= #weather card ================= */
 #wxCard{
+  --tone:232,184,74;                 /* glow colour (r,g,b), changes with the weather */
   position:fixed;top:78px;right:28px;z-index:6;
-  width:290px;border-radius:26px;padding:20px 22px;
+  width:306px;border-radius:30px;padding:22px 22px 20px;
   display:none;cursor:pointer;overflow:hidden;
   transition:width .45s var(--ease),padding .45s var(--ease),border-radius .45s,background .2s;
   animation:rise .5s var(--ease);
 }
 #wxCard.show{display:block}
 #wxCard:hover{background:rgba(20,40,30,.72)}
-/* soft wheat glow in the corner */
+
+/* mood colours: the card glows differently for each kind of weather */
+#wxCard[data-tone="clear"]{--tone:240,190,70}
+#wxCard[data-tone="cloud"]{--tone:150,185,170}
+#wxCard[data-tone="rain"] {--tone:90,170,200}
+#wxCard[data-tone="storm"]{--tone:150,120,210}
+#wxCard[data-tone="mist"] {--tone:200,210,200}
+#wxCard[data-tone="snow"] {--tone:190,225,245}
+
+/* big soft glow behind the temperature */
 #wxCard::before{
   content:"";position:absolute;inset:0;pointer-events:none;
-  background:radial-gradient(110% 80% at 100% 0%,rgba(232,184,74,.16),transparent 62%);
+  background:
+    radial-gradient(70% 60% at 85% 8%,rgba(var(--tone),.34),transparent 70%),
+    radial-gradient(90% 50% at 0% 100%,rgba(var(--tone),.10),transparent 70%);
+  transition:background .6s;
 }
 #wxCard .full,#wxCard .mini{position:relative}
 
-/* minimised version (small pill) */
+/* ---- minimised version (small pill) ---- */
 #wxCard .mini{display:none;align-items:center;gap:10px;white-space:nowrap}
 #wxCard .mini .ic{font-size:20px;line-height:1}
 #wxCard .mini .mt{font-size:17px;font-weight:500}
@@ -119,8 +132,9 @@ body.chatting .brand{font-size:32px;top:22px}
 #wxCard.mini .full{display:none}
 #wxCard.mini .mini{display:flex}
 
-/* full version */
-#wxCard .loc{font-size:12.5px;color:var(--mist-dim);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+/* ---- full version ---- */
+/* place + live dot */
+#wxCard .loc{font-size:12.5px;color:var(--mist-dim);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
 #wxCard .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sprout)}
 #wxCard .live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--sprout);animation:pulse 2s infinite}
 @keyframes pulse{
@@ -128,12 +142,37 @@ body.chatting .brand{font-size:32px;top:22px}
   70%{box-shadow:0 0 0 7px rgba(143,211,164,0)}
   100%{box-shadow:0 0 0 0 rgba(143,211,164,0)}
 }
-#wxCard .top{display:flex;align-items:center;justify-content:space-between}
-#wxCard .t{font-family:var(--font-display);font-size:54px;font-weight:300;line-height:1.1;letter-spacing:-.03em}
-#wxCard .big{font-size:42px;line-height:1}
-#wxCard .c{text-transform:capitalize;color:var(--mist-dim);margin-bottom:12px}
-#wxCard .row{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;border-top:1px solid var(--glass-line)}
-#wxCard .row span:first-child{color:var(--mist-dim)}
+
+/* temperature on the left, floating icon on the right */
+#wxCard .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+#wxCard .t{font-family:var(--font-display);font-size:78px;font-weight:300;line-height:1;letter-spacing:-.06em;font-variation-settings:"opsz" 144}
+#wxCard .t sup{font-size:26px;letter-spacing:0;vertical-align:top;position:relative;top:10px;margin-left:3px;opacity:.7}
+#wxCard .orbicon{position:relative;width:84px;height:84px;display:grid;place-items:center;font-size:48px}
+#wxCard .orbicon::before{
+  content:"";position:absolute;inset:4px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,rgba(var(--tone),.55),rgba(var(--tone),.08) 70%);
+  border:1px solid rgba(var(--tone),.35);
+}
+#wxCard .orbicon span{position:relative;animation:floaty 5s ease-in-out infinite}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+
+/* condition + feels like */
+#wxCard .c{font-family:var(--font-display);font-size:22px;font-weight:400;letter-spacing:-.02em;text-transform:capitalize}
+#wxCard .fl{font-size:13px;color:var(--mist-dim);margin:2px 0 16px}
+
+/* three small stat tiles */
+#wxCard .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+#wxCard .tile{background:rgba(255,255,255,.06);border:1px solid var(--glass-line);border-radius:16px;padding:10px 10px 11px}
+#wxCard .tile small{display:block;font-size:11.5px;color:var(--mist-dim);margin-bottom:3px}
+#wxCard .tile b{font-size:15px;font-weight:550}
+#wxCard .tile em{font-style:normal;font-size:11px;color:var(--mist-dim);margin-left:2px}
+/* humidity bar fills up to the real percentage */
+#wxCard .meter{height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:8px;overflow:hidden}
+#wxCard .meter i{display:block;height:100%;border-radius:2px;background:rgb(var(--tone));transition:width .8s var(--ease)}
+
+/* farming tip at the bottom */
+#wxCard .tip{margin-top:14px;padding-top:13px;border-top:1px solid var(--glass-line);font-size:13px;line-height:1.5;color:var(--mist)}
+
 #wxCard .msg2{font-size:13px;color:var(--mist-dim)}
 
 /* ================= #main area ================= */
@@ -542,21 +581,52 @@ function setWxMini(m) { wxCard.classList.toggle('mini', !!m); }
 // round to 1 decimal if it's a number
 const fmt = v => (typeof v === 'number' ? Math.round(v * 10) / 10 : v);
 
+// pick a mood for the card colours from the weather text
+function wxTone(c) {
+  c = String(c || '').toLowerCase();
+  if (c.includes('thunder')) return 'storm';
+  if (/drizzle|rain|shower/.test(c)) return 'rain';
+  if (/snow|sleet/.test(c)) return 'snow';
+  if (/mist|fog|haze|smoke|dust|sand/.test(c)) return 'mist';
+  if (c.includes('clear')) return 'clear';
+  return 'cloud';
+}
+
+// one short farming tip based on the numbers (simple rules, not a forecast)
+function wxTip(d) {
+  const t = Number(d.temp), h = Number(d.humidity), w = Number(d.wind), r = Number(d.rain_1h);
+  if (r > 0)   return '🌱 It is raining now, so hold off on irrigation.';
+  if (t >= 38) return '🌱 Very hot. Water crops early morning or after sunset.';
+  if (w >= 8)  return '🌱 Strong wind. Avoid spraying pesticides today.';
+  if (h >= 85) return '🌱 High humidity. Keep an eye out for fungal disease.';
+  if (h <= 30) return '🌱 Air is dry. Soil may need extra watering.';
+  return '🌱 Good conditions for field work today.';
+}
+
 // draw the weather data into the card (small + full version both live inside)
 function drawWx(d) {
   wxLast = d;
   const ic = wxIcon(d.condition);
   const place = esc(LOC.district + ', ' + LOC.state);
+  const hum = Math.max(0, Math.min(100, Number(d.humidity) || 0));
+  wxCard.dataset.tone = wxTone(d.condition);   // changes the glow colour
+
   wxCard.innerHTML = `
   <div class="mini"><span class="ic">${ic}</span><span class="mt">${fmt(d.temp)}°C</span><span class="mc">${esc(d.condition)}</span></div>
   <div class="full">
     <div class="loc"><span>📍 ${place}</span><span class="live">Live</span></div>
-    <div class="top"><div class="t">${fmt(d.temp)}°C</div><div class="big">${ic}</div></div>
+    <div class="top">
+      <div class="t">${Math.round(d.temp)}<sup>°C</sup></div>
+      <div class="orbicon"><span>${ic}</span></div>
+    </div>
     <div class="c">${esc(d.condition)}</div>
-    <div class="row"><span>Feels like</span><span>${fmt(d.feels_like)}°C</span></div>
-    <div class="row"><span>Humidity</span><span>${d.humidity}%</span></div>
-    <div class="row"><span>Wind</span><span>${d.wind} m/s</span></div>
-    <div class="row"><span>Rain (last 1h)</span><span>${d.rain_1h} mm</span></div>
+    <div class="fl">Feels like ${fmt(d.feels_like)}°C</div>
+    <div class="tiles">
+      <div class="tile"><small>Humidity</small><b>${d.humidity}<em>%</em></b><div class="meter"><i style="width:${hum}%"></i></div></div>
+      <div class="tile"><small>Wind</small><b>${d.wind}<em>m/s</em></b></div>
+      <div class="tile"><small>Rain, 1h</small><b>${d.rain_1h}<em>mm</em></b></div>
+    </div>
+    <div class="tip">${wxTip(d)}</div>
   </div>`;
   $('#wxBtn').textContent = ic;
 }
