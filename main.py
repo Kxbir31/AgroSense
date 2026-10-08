@@ -392,7 +392,7 @@ RULES:
 12. Ask follow-up questions only when essential.
 
 Before answering, check:
-LOCATION → YEAR → SEASON → METRIC → UNITS → SOURCE → EVIDENCE.
+LOCATION → YEAR → SEASON → METRIC → UNITS → SOURCE → EVIDENCE
 
 
 Priority:
