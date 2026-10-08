@@ -609,7 +609,7 @@ def voice_to_english(audio_bytes, language_code="hi-IN"):
 def process_voice_query(audio_bytes, district, state, think=False, session_id="default"):
     hindi, english = voice_to_english(audio_bytes)
     if not english:
-        return {"error": "Could not understand the audio. Please try again."}
+        return {"error" : "Could not understand the audio. Please try again ."}
 
     out = process_query(english, district, state, think=think, session_id=session_id)
     out["transcript"] = hindi
