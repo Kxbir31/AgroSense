@@ -396,9 +396,9 @@ LOCATION → YEAR → SEASON → METRIC → UNITS → SOURCE → EVIDENCE
 
 
 Priority:
-ACCURACY > EVIDENCE > TRANSPARENCY > HELPFULNESS.
+ACCURACY > EVIDENCE > TRANSPARENCY > HELPFULNESS
 
-In last translate the whole message in hindi with a heading of Hindi .
+In last translate the whole message in hindi with a heading of HINDI .
 """
 
 
