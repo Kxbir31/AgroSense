@@ -470,7 +470,7 @@ def summarize_messages(messages):
                 "You summarise a farmer's recent messages to an agriculture assistant. "
                 "Write 2-3 short sentences covering the crops, problems, farming actions "
                 "and any details (like land size or season) the farmer mentioned. "
-                "Only use what the farmer said. Do not add advice."
+                "Only use what the farmer said. Do not add advices"
             ),
         },
         {"role": "user", "content": f"Farmer's recent messages:\n{numbered}"},
