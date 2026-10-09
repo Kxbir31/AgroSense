@@ -12,7 +12,7 @@ from deep_translator import GoogleTranslator, MyMemoryTranslator
 from gnani.stt import GnaniSTTClient
 
 # LLM provider imports
-# keep only one of the two blocks below active at a time
+# keep only one of the two blocks below active at single time
 
 # Hugging Face block, comment it out when you use Google
 # from huggingface_hub import InferenceClient
