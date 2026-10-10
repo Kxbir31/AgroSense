@@ -64,7 +64,7 @@ def chat(body: ChatIn):
     return {"answer": result["answer"], "route": result["route"]}
 
 
-# ===== CHANGE 2: NEW VOICE ROUTE (paste this whole block) =====
+# ===== CHANGE 2: NEW VOICE ROUTE (paste this whole block)
 @app.post("/api/voice")
 def voice(
     audio: UploadFile = File(...),
