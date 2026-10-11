@@ -739,5 +739,5 @@ def process_voice_query(audio_bytes, district, state, think=False, session_id="d
 if __name__ == "__main__":
     run_agent()
 
-# command to start the server
+
 # uvicorn server:app --host 127.0.0.1 --port 8000
