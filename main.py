@@ -480,8 +480,8 @@ In last translate the whole message in hindi with a heading of HINDI .
 #     return None
 
 
-# Google AI Studio version of call_llm, comment it out when you use Hugging Face
-# gemini does not use the same message format as openai style apis
+# Google AI Studio version of call_llm
+
 # so this helper splits the system message out and renames assistant to model
 def _to_gemini(messages):
     system_parts, contents = [], []
