@@ -11,13 +11,12 @@ from rank_bm25 import BM25Okapi
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 from gnani.stt import GnaniSTTClient
 
-# LLM provider imports
-# keep only one of the two blocks below active at single time
+# LLM provider imports. Keep only one of the two blocks active at a time.
 
-# Hugging Face block, comment it out when you use Google
+# Hugging Face
 # from huggingface_hub import InferenceClient
 
-# Google AI Studio block, comment it out when you use Hugging Face
+# Google AI Studio
 from google import genai
 from google.genai import types
 
@@ -28,18 +27,17 @@ from langchain_chroma import Chroma
 
 load_dotenv(override=True)
 
-# LLM provider keys
-# again, keep only one block active at a time
+# LLM provider keys. Keep only one block active at a time.
 
-# Hugging Face keys
+# Hugging Face
 # HF_TOKEN = os.getenv("HF_TOKEN")
 # HF_MODEL = os.getenv("HF_MODEL", "google/gemma-4-31B-it")
 
-# Google AI Studio keys
+# Google AI Studio
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-3.6-flash")
 
-# other keys that are always needed
+# Required regardless of provider
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 GNANI_API_KEY = os.getenv("GNANI_API_KEY")
 
@@ -48,12 +46,12 @@ DB_DIR = "./chroma_db"
 COLLECTION = "agriculture_rag_v2"
 
 
-# split text into lowercase words, used by the router and bm25
+# Lowercase word tokens, shared by the router and BM25
 def tokenize(text):
     return re.findall(r"\b\w+\b", text.lower())
 
 
-# load the pdf
+# Load the PDF
 pages = []
 for file in PDF_FILES:
     for page in PyPDFLoader(file).load():
@@ -63,10 +61,10 @@ for file in PDF_FILES:
 print(f"Total pages loaded: {len(pages)}")
 
 
-# chunking
-# the pdf has one paragraph for every district, starting like Sehore district, Madhya Pradesh. Soil
-# page breaks sometimes cut a paragraph in half, so we join all the pages first
-# and then split the text at every district heading
+# Chunking
+# The PDF has one paragraph per district, starting like "Sehore district, Madhya Pradesh. Soil:".
+# Page breaks can cut a paragraph in half, so all pages are joined first
+# and the text is then split at every district heading.
 RECORD_START = re.compile(
     r"(?:\A|(?<=\. ))(?=[A-Z][A-Za-z.&'()\- ]{1,45}? district, [A-Za-z&() ]{2,45}?\. Soil:)"
 )
@@ -74,13 +72,13 @@ RECORD_HEAD = re.compile(r"^(.+?) district, (.+?)\. Soil:")
 
 
 def build_chunks(pages):
-    # join all pages into one big text and remember where each page starts
+    # Join all pages into one text and remember where each page starts
     text, page_starts = "", []
     for p in pages:
         page_starts.append(len(text))
         text += re.sub(r"\s+", " ", p.page_content).strip() + " "
 
-    # every district record runs from its own start till the start of the next one
+    # Each district record runs until the start of the next one
     starts = [m.start() for m in RECORD_START.finditer(text)]
     ends = starts[1:] + [len(text)]
 
@@ -94,13 +92,12 @@ def build_chunks(pages):
         meta = {
             "district": district,
             "state": state,
-            "page": bisect_right(page_starts, s),   # page number, counting from 1
+            "page": bisect_right(page_starts, s),   # 1-based page number
             "source_file": pages[0].metadata.get("source_file", ""),
         }
 
-        # each record has two parts
-        # part one has soil, climate and suited crops
-        # part two has the top four crops of the state
+        # Each record has two parts: the district profile (soil, climate, suited crops)
+        # and the state's top four crops
         cut = record.find(" State top-4 crops")
         if cut == -1:
             parts = [("profile", record)]
@@ -111,7 +108,7 @@ def build_chunks(pages):
         for name, content in parts:
             chunks.append(Document(page_content=content, metadata={**meta, "part": name}))
 
-    # give every chunk a simple number as its id
+    # Sequential chunk ids
     for i, c in enumerate(chunks):
         c.metadata["id"] = i
     return chunks
@@ -120,14 +117,14 @@ def build_chunks(pages):
 chunks = build_chunks(pages)
 print(f"Total chunks created: {len(chunks)}")
 
-# a lookup table, given a district and state it returns the chunk ids
+# Lookup from (district, state) to chunk ids
 records = {}
 for c in chunks:
     key = (c.metadata["district"].lower(), c.metadata["state"].lower())
     records.setdefault(key, []).append(c.metadata["id"])
 
 
-# embeddings and chroma database
+# Embeddings and Chroma database
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
@@ -137,8 +134,8 @@ def open_vectorstore():
         embedding_function=embeddings,
         persist_directory=DB_DIR,
     )
-    # if the database was already built for this pdf then reuse it
-    # otherwise rebuild it, this also stops duplicates on every run
+    # Reuse the existing collection if it matches the current chunks,
+    # otherwise rebuild it. This also prevents duplicates across runs.
     if store._collection.count() == len(chunks):
         return store
     store.delete_collection()
@@ -153,28 +150,27 @@ def open_vectorstore():
 
 vectorstore = open_vectorstore()
 
-# bm25 index for keyword search
+# BM25 index for keyword search
 bm25 = BM25Okapi([tokenize(c.page_content) for c in chunks])
 
 
-# llm setup
-# keep only one of the two blocks below active at a time
+# LLM setup. Keep only one of the two blocks active at a time.
 
-# Hugging Face setup, comment it out when you use Google
+# Hugging Face
 # llm_client = InferenceClient(token=HF_TOKEN)
 # MODELS = [HF_MODEL, "deepseek-ai/DeepSeek-V4.1-Flash", "meta-llama/Llama-3.1-8B-Instruct", "openai/gpt-oss-20b"]
 
-# Google AI Studio setup, comment it out when you use Hugging Face
+# Google AI Studio
 llm_client = genai.Client(api_key=GOOGLE_API_KEY)
 MODELS = [GOOGLE_MODEL, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
-MODELS = list(dict.fromkeys(MODELS))   # remove repeated names but keep the order
+MODELS = list(dict.fromkeys(MODELS))   # drop duplicates, keep order
 
-# remembers which model worked last so we try it first next time
+# Last model that worked, tried first on the next call
 working_model = None
 
 
-# router
-# words that tell us the question needs live weather
+# Router
+# Keywords indicating the question needs live weather
 WEATHER_KW = {
     "weather", "rain", "rainy", "raining", "rainfall", "shower", "drizzle",
     "temperature", "temp", "humidity", "humid", "forecast", "wind", "windy",
@@ -184,19 +180,19 @@ WEATHER_KW = {
     "today", "tomorrow", "tonight", "now", "current", "currently", "latest",
     "week", "outside", "condition", "conditions", "degree", "celsius",
     "uv", "dew", "mist", "pressure", "visibility",
-    # farming work that depends on the weather
+    # weather-dependent farm work
     "spray", "spraying", "sow", "sowing", "harvest", "harvesting",
     "irrigate", "irrigating", "water", "watering", "drying",
     "transplant", "transplanting", "plough", "ploughing", "plow", "plowing",
     "thresh", "threshing",
-    # hindi and hinglish words
+    # Hindi and Hinglish
     "barish", "baarish", "mausam", "garmi", "sardi", "thand", "dhoop",
     "hawa", "aandhi", "toofan", "kohra", "olavrishti", "sukha", "badal",
     "aaj", "kal", "abhi", "tapman", "nami", "paani", "pani", "sinchai",
     "kataai", "buwai", "bovai", "chidkav", "chhidkav",
 }
 
-# words that tell us the question needs the pdf knowledge about the district
+# Keywords indicating the question needs the PDF's district knowledge
 RETRIEVAL_KW = {
     # soil and land
     "soil", "soils", "mitti", "land", "zameen", "jameen", "terrain", "texture",
@@ -226,7 +222,7 @@ RETRIEVAL_KW = {
     # water and irrigation
     "irrigation", "canal", "well", "borewell", "tubewell", "tank", "pond",
     "river", "dam", "groundwater", "watershed", "drip", "sprinkler",
-    # statistics and money
+    # statistics and markets
     "yield", "production", "produce", "area", "hectare", "hectares", "ha",
     "acre", "acres", "tonnes", "tons", "productivity", "output", "average",
     "total", "percent", "percentage", "statistics", "data", "report",
@@ -239,7 +235,7 @@ RETRIEVAL_KW = {
     "livestock", "cattle", "dairy", "poultry", "fishery", "fish",
 }
 
-# advice type questions need both the weather and the district knowledge
+# Advice-style questions need both weather and district knowledge
 ADVICE_KW = {
     "should", "can", "could", "advice", "advise", "suggest", "suggestion",
     "recommend", "recommendation", "best", "when", "plan", "planning",
@@ -248,19 +244,19 @@ ADVICE_KW = {
 }
 
 
-# decides what the question needs, weather, pdf knowledge, both, or nothing
+# Decides whether a question needs weather, PDF knowledge, both, or neither
 def route_query(query, district):
     words = set(tokenize(query))
     need_weather = bool(words & WEATHER_KW)
     need_retrieval = bool(words & RETRIEVAL_KW) or district.lower() in query.lower()
 
-    # catch other word forms like irrigating or fertilizers
+    # Catch other word forms such as irrigating or fertilizers
     if any(w.startswith(("weath", "rain", "temper", "forecast")) for w in words):
         need_weather = True
     if any(w.startswith(("irrigat", "fertili", "cultivat", "agri")) for w in words):
         need_retrieval = True
 
-    # an advice question about farming needs both sources
+    # Advice questions about farming need both sources
     if words & ADVICE_KW and (need_weather or need_retrieval):
         need_weather = need_retrieval = True
 
@@ -271,24 +267,23 @@ def route_query(query, district):
     if need_retrieval:
         return "RETRIEVAL"
 
-    # nothing matched, so skip the pdf only for tiny messages like hi
+    # No keyword matched: skip retrieval only for very short messages like "hi"
     if len(words) <= 2:
         return "DIRECT"
     return "RETRIEVAL"
 
 
-# weather
+# Weather
 _weather_cache = {}
-WEATHER_TTL = 600  # how long to keep a weather result, in seconds
+WEATHER_TTL = 600  # cache lifetime in seconds
 
 
-# gets the live weather from openweather, uses a small cache so we do not call it again and again
+# Fetches live weather from OpenWeather, with a short-lived cache to avoid repeat calls
 def get_weather_data(district, state):
     if not OPENWEATHER_API_KEY:
         print("Weather error: OPENWEATHER_API_KEY missing")
         return None
 
-    # return the saved result if it is still fresh
     key = (district.lower(), state.lower())
     cached = _weather_cache.get(key)
     if cached and time.time() - cached[0] < WEATHER_TTL:
@@ -296,24 +291,25 @@ def get_weather_data(district, state):
 
     geo_url = "https://api.openweathermap.org/geo/1.0/direct"
     try:
-        # first find the latitude and longitude of the district
+        # Geocode the district first
         geo = requests.get(
             geo_url,
             params={"q": f"{district},{state},IN", "limit": 1, "appid": OPENWEATHER_API_KEY},
             timeout=5,
         ).json()
-        # if that fails try again without the state name
+        # Retry without the state name
         if not geo:
             geo = requests.get(
                 geo_url,
                 params={"q": f"{district},IN", "limit": 1, "appid": OPENWEATHER_API_KEY},
                 timeout=5,
             ).json()
+        # An error response comes back as a dict rather than a list
         if not geo or isinstance(geo, dict):
             print("Weather error:", geo)
             return None
 
-        # now get the current weather for that place
+        # Current weather for the resolved coordinates
         w = requests.get(
             "https://api.openweathermap.org/data/2.5/weather",
             params={"lat": geo[0]["lat"], "lon": geo[0]["lon"], "units": "metric", "appid": OPENWEATHER_API_KEY},
@@ -338,7 +334,7 @@ def get_weather_data(district, state):
         return None
 
 
-# turns the weather data into one readable line for the llm
+# Formats the weather data as one readable line for the LLM
 def get_weather(district, state):
     d = get_weather_data(district, state)
     if not d:
@@ -350,13 +346,13 @@ def get_weather(district, state):
     )
 
 
-# retrieval
+# Retrieval
 def find_district(district, state):
     """Chunk ids of the user's own district (state name can be 'Telangana' etc.)."""
     d, s = district.lower().strip(), state.lower().strip()
-    # look only inside the same state, and if there is none then look everywhere
+    # Search within the same state, falling back to all districts
     pool = [k for k in records if s and (s in k[1] or k[1] in s)] or list(records)
-    # allow small spelling mistakes in the district name
+    # Fuzzy match to tolerate spelling mistakes
     match = get_close_matches(d, [k[0] for k in pool], n=1, cutoff=0.8)
     if not match:
         return []
@@ -369,25 +365,25 @@ def districts_in_query(query, state, skip, limit=2):
     q = query.lower()
     found = [k for k in records if k[0] != skip and re.search(rf"\b{re.escape(k[0])}\b", q)]
     s = state.lower().strip()
-    found.sort(key=lambda k: not (s and (s in k[1] or k[1] in s)))  # districts of the same state come first
+    found.sort(key=lambda k: not (s and (s in k[1] or k[1] in s)))  # same-state districts first
     return found[:limit]
 
 
 def hybrid_search(q, state, k):
-    """Mixes keyword search and meaning search, then merges both rankings."""
-    # keyword search with bm25
+    """Combines BM25 keyword search and vector search using Reciprocal Rank Fusion."""
+    # Keyword search
     scores = bm25.get_scores(tokenize(q))
     bm_top = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:10]
-    # meaning search with the vector database
+    # Semantic search
     vec_top = [d.metadata["id"] for d in vectorstore.similarity_search(q, k=5)]
 
-    # merge the two rankings, a chunk high in both lists gets the best score
+    # Reciprocal Rank Fusion: chunks ranked high in both lists score best
     fused = {}
     for ranked in (bm_top, vec_top):
         for rank, idx in enumerate(ranked):
             fused[idx] = fused.get(idx, 0) + 1 / (60 + rank)
 
-    # give a small bonus to chunks from the same state as the user
+    # Small boost for chunks from the user's state
     s = state.lower().strip()
     for idx in fused:
         if s and s in chunks[idx].metadata["state"].lower():
@@ -397,17 +393,17 @@ def hybrid_search(q, state, k):
 
 
 def retrieve(query, district, state, k=3):
-    # step one, always take the user's own district first
+    # Always start with the user's own district
     ids = list(find_district(district, state))
     own_name = chunks[ids[0]].metadata["district"].lower() if ids else ""
 
-    # step two, add any other district the user named in the question
+    # Add any other districts named in the question
     for key in districts_in_query(query, state, skip=own_name):
         for i in records[key]:
             if i not in ids:
                 ids.append(i)
 
-    # step three, if the district is not in the pdf then fall back to hybrid search
+    # District not in the PDF: fall back to hybrid search
     if not ids:
         ids = hybrid_search(f"{query} {district} {state}", state, k)
         found = [f"[Page {chunks[i].metadata['page']}] {chunks[i].page_content}" for i in ids]
@@ -418,7 +414,7 @@ def retrieve(query, district, state, k=3):
     return [f"[Page {chunks[i].metadata['page']}] {chunks[i].page_content}" for i in ids]
 
 
-# llm
+# LLM
 SYSTEM_PROMPT = """
 You are AgroAI, a trustworthy agricultural assistant for Indian farmers.
 
@@ -451,7 +447,7 @@ In last translate the whole message in hindi with a heading of HINDI .
 """
 
 
-# Hugging Face version of call_llm, comment it out when you use Google
+# Hugging Face version of call_llm
 # def call_llm(messages, max_tokens, temperature, log=False):
 #     """Try the model that worked last time, then the others one by one."""
 #     global working_model
@@ -482,7 +478,7 @@ In last translate the whole message in hindi with a heading of HINDI .
 
 # Google AI Studio version of call_llm
 
-# so this helper splits the system message out and renames assistant to model
+# Splits out the system message and maps the assistant role to Gemini's "model"
 def _to_gemini(messages):
     system_parts, contents = [], []
     for m in messages:
@@ -498,7 +494,7 @@ def call_llm(messages, max_tokens, temperature, log=False):
     """Try the model that worked last time, then the others one by one."""
     global working_model
 
-    # put the last working model at the front of the list
+    # Try the last working model first
     order = MODELS
     if working_model:
         order = [working_model] + [m for m in MODELS if m != working_model]
@@ -512,10 +508,9 @@ def call_llm(messages, max_tokens, temperature, log=False):
                 max_output_tokens=max_tokens,
                 temperature=temperature,
             )
-            # gemini models spend part of the token limit on thinking
-            # that can leave the answer empty or cut short
-            # older 2.5 flash lets us turn thinking off, newer models do not
-            # so for them we simply give some extra room in the token limit
+            # Gemini models spend part of the token limit on thinking, which can
+            # leave the answer empty or truncated. 2.5 flash allows disabling
+            # thinking; newer models do not, so they get extra token headroom.
             if model.startswith("gemini-2.5-flash"):
                 cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
             else:
@@ -535,14 +530,13 @@ def call_llm(messages, max_tokens, temperature, log=False):
                 print(f"[model] {model}")
             return text
         except Exception as e:
-            # this model failed so move on to the next one
             print(f"{model} failed ({repr(e)[:300]}), trying next")
             if model == working_model:
                 working_model = None
     return None
 
 
-# builds the final prompt from location, memory, weather and pdf knowledge and asks the llm
+# Builds the final prompt from location, memory, weather and PDF context, then calls the LLM
 def ask_llm(query, district, state, route, weather, context, memory=None):
     parts = [f"Location: {district}, {state}, India"]
     if memory:
@@ -560,9 +554,9 @@ def ask_llm(query, district, state, route, weather, context, memory=None):
     return call_llm(messages, max_tokens=1000, temperature=0.3, log=True)
 
 
-# memory, keeps a short summary of the last 5 user messages
+# Memory: short summary of the last 5 user messages
 MEMORY_SIZE = 5
-user_memory = {}  # one entry for every session so different users do not get mixed up
+user_memory = {}  # keyed by session so users do not get mixed up
 
 
 def get_memory(session_id="default"):
@@ -571,7 +565,7 @@ def get_memory(session_id="default"):
     return user_memory[session_id]
 
 
-# asks the llm to write a short summary of what the farmer said recently
+# Asks the LLM for a short summary of the farmer's recent messages
 def summarize_messages(messages):
     if not messages:
         return ""
@@ -593,7 +587,7 @@ def summarize_messages(messages):
     if text:
         return text.strip()
 
-    # if the llm cannot be reached keep the raw messages so the memory is not lost
+    # LLM unavailable: keep the raw messages so the memory is not lost
     return " | ".join(messages)
 
 
@@ -603,16 +597,15 @@ def update_memory(session_id, query):
     mem["summary"] = summarize_messages(mem["messages"])
 
 
-# main query flow
+# Main query flow
 THINK_HINT = "\n\n(Think carefully and give a detailed, well-reasoned, step-by-step answer.)"
 
 
 def process_query(query, district, state, think=False, session_id="default"):
-    # decide what the question needs
     route = route_query(query, district)
     weather, context = None, []
 
-    # fetch only what is needed
+    # Fetch only what the route requires
     if route in ("WEATHER", "BOTH"):
         weather = get_weather(district, state)
         if weather is None:
@@ -624,12 +617,12 @@ def process_query(query, district, state, think=False, session_id="default"):
     memory = get_memory(session_id)["summary"]
     answer = ask_llm(llm_query, district, state, route, weather, context, memory)
 
-    # save the question only after answering, so the memory holds earlier messages only
+    # Update memory after answering so the summary only covers earlier messages
     update_memory(session_id, query)
     return {"answer": answer, "route": route}
 
 
-# terminal agent, for testing in the command line
+# Terminal agent for command-line testing
 def run_agent():
     print("\n=== Agri Agent ===")
     state = input("Enter your state: ").strip()
@@ -650,11 +643,11 @@ def run_agent():
         print(f"[time: {time.time() - t0:.2f}s]\n")
 
 
-# speech api
+# Speech API
 _stt_client = None
 
 
-# creates the speech client only once and reuses it after that
+# Creates the speech client once and reuses it
 def _get_stt_client():
     global _stt_client
     if _stt_client is None:
@@ -665,7 +658,7 @@ def _get_stt_client():
 def translate_hi_to_en(text):
     """Hindi to English with backups, so one blocked service does not break voice."""
 
-    # first choice, the official Google Cloud Translation, used only if the key is in the env file
+    # 1. Official Google Cloud Translation, only if the key is set
     gkey = os.getenv("GOOGLE_TRANSLATE_API_KEY")
     if gkey:
         try:
@@ -679,7 +672,7 @@ def translate_hi_to_en(text):
         except Exception as e:
             print("[translate] Google Cloud failed:", repr(e))
 
-    # second choice, the free google service, tried two times
+    # 2. Free Google service, two attempts
     for _ in range(2):
         try:
             return GoogleTranslator(source="hi", target="en").translate(text)
@@ -687,13 +680,13 @@ def translate_hi_to_en(text):
             print("[translate] free Google failed:", repr(e))
             time.sleep(1.5)
 
-    # third choice, MyMemory, free and needs no key
+    # 3. MyMemory, free and keyless
     try:
         return MyMemoryTranslator(source="hi-IN", target="en-GB").translate(text)
     except Exception as e:
         print("[translate] MyMemory failed:", repr(e))
 
-    # last choice, ask the llm to translate
+    # 4. Last resort: the LLM
     out = call_llm(
         [
             {"role": "system", "content": "Translate the Hindi text to English. Output only the translation, nothing else."},
@@ -709,14 +702,14 @@ def translate_hi_to_en(text):
 
 def voice_to_english(audio_bytes, language_code="hi-IN"):
     """Takes wav bytes and gives back the hindi text and the english text."""
-    # the speech client needs a real file so save the audio temporarily
+    # The speech client requires a file path, so write the audio to a temp file
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         f.write(audio_bytes)
         path = f.name
     try:
         result = _get_stt_client().transcribe(path, language_code=language_code)
     finally:
-        # always delete the temporary file, even if something fails
+        # Always remove the temp file, even on failure
         os.remove(path)
 
     hindi = (result.get("transcript") or "").strip()
@@ -740,5 +733,5 @@ if __name__ == "__main__":
     run_agent()
 
 
-#To Start the server Run the code in the terminal
+
 # uvicorn server:app --host 127.0.0.1 --port 8000
