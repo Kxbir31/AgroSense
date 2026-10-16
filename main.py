@@ -46,7 +46,7 @@ DB_DIR = "./chroma_db"
 COLLECTION = "agriculture_rag_v2"
 
 
-# Lowercase word tokens, shared by the router and BM25
+# Lowercase word tokens, shared by the router & BM25
 def tokenize(text):
     return re.findall(r"\b\w+\b", text.lower())
 
