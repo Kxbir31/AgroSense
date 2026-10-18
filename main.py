@@ -37,7 +37,7 @@ load_dotenv(override=True)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-3.6-flash")
 
-# Required regardless of provider
+# Required regardless of providerr
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 GNANI_API_KEY = os.getenv("GNANI_API_KEY")
 
