@@ -62,7 +62,7 @@ print(f"Total pages loaded: {len(pages)}")
 
 
 # Chunking
-# The PDF has one paragraph per district, starting like "Sehore district, Madhya Pradesh. Soil:".
+# The PDF has one paragraph per district, starting like " Sehore district, Madhya Pradesh. Soil:".
 # Page breaks can cut a paragraph in half, so all pages are joined first
 # and the text is then split at every district heading.
 RECORD_START = re.compile(
