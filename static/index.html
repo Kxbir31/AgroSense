@@ -3,423 +3,1200 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgroSense</title>
+<title>AgroSense — Field Intelligence</title>
 
-<!-- fonts: Fraunces for the big headings, Bricolage Grotesque for everything else -->
+<!-- Fraunces for the AgroSense brand logo, Plus Jakarta Sans for UI -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..700&family=Fraunces:opsz,wght@9..144,300..500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<!-- libraries: marked turns markdown into html, DOMPurify keeps that html safe -->
+<!-- Markdown parser & HTML sanitizer -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 
 <style>
-/* ================= #colours & #fonts (change the look from here) ================= */
-:root{
-  --night:   #0b1a13;               /* darkest green, page base */
-  --field:   #1d4a31;               /* mid green, used in gradients and the mic orb */
-  --mist:    #e9f0e3;               /* main text colour (soft off-white, easier on eyes) */
-  --mist-dim:rgba(233,240,227,.68); /* secondary text */
-  --grain:   #e8b84a;               /* wheat/mustard accent: send button, user bubble, highlights */
-  --grain-ink:#2b1f05;              /* dark text that sits on top of the accent */
-  --sprout:  #8fd3a4;               /* light green for the "live" dot and the waveform */
-  --danger:  #ffb4a4;               /* error text */
+/* --- Design Tokens (calibrated for the background photo) --- */
+:root {
+  --bg:          #0b1a13;
+  --bg-subtle:   rgba(255, 255, 255, 0.07);
+  --surface:     rgba(14, 28, 21, 0.62);
+  --surface-alt: rgba(22, 42, 31, 0.74);
+  --surface-pop: rgba(12, 24, 18, 0.82);
 
-  --glass-bg:   rgba(14,28,21,.58); /* panel background */
-  --glass-line: rgba(233,240,227,.14);
+  --ink:         #e9f0e3;
+  --ink-2:       rgba(233, 240, 227, 0.72);
+  --ink-3:       rgba(233, 240, 227, 0.48);
 
-  --font-display:'Fraunces',Georgia,serif;
-  --font-ui:'Bricolage Grotesque',system-ui,sans-serif;
+  --line:        rgba(233, 240, 227, 0.14);
+  --line-strong: rgba(233, 240, 227, 0.24);
 
-  --ease:cubic-bezier(.2,.8,.2,1);
+  --accent:      #e8b84a;
+  --accent-hover:#f2c966;
+  --accent-soft: rgba(232, 184, 74, 0.15);
+  --accent-ink:  #2b1f05;
+
+  --amber:       #e8b84a;
+  --amber-soft:  rgba(232, 184, 74, 0.16);
+  --live:        #8fd3a4;
+  --danger:      #ffb4a4;
+  --danger-soft: rgba(255, 180, 164, 0.14);
+
+  --shadow-sm:   0 4px 16px rgba(0, 0, 0, 0.22);
+  --shadow-md:   0 14px 36px rgba(0, 0, 0, 0.34);
+  --shadow-lg:   0 20px 50px rgba(0, 0, 0, 0.45);
+
+  --font-display:'Fraunces', Georgia, serif;
+  --font-sans:   'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --radius-sm:   10px;
+  --radius-md:   16px;
+  --radius-lg:   22px;
+  --ease:        cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* ================= #reset & #page basics ================= */
-*{box-sizing:border-box;margin:0}
-html,body{height:100%}
-body{
-  font-family:var(--font-ui);
-  color:var(--mist);
-  background:var(--night);
-  overflow:hidden;
-  -webkit-font-smoothing:antialiased;
+/* --- Base Reset --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
-button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
-:focus-visible{outline:2px solid var(--grain);outline-offset:2px}
 
-/* ================= #background ================= */
-.bg{
-  position:fixed;inset:0;z-index:0;
-  /* dark green wash on top of your photo; falls back to plain gradient if the image is missing */
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  background-color: var(--bg);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+button, input, textarea {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+}
+
+button {
+  cursor: pointer;
+  user-select: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Background photo with dark green wash (falls back to gradient if missing) */
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   background:
-    linear-gradient(180deg,rgba(11,26,19,.35) 0%,rgba(11,26,19,.78) 100%),
-    url(/static/background.jpg) center/cover no-repeat,
-    linear-gradient(160deg,#3e7a50,#0b1a13);
+    linear-gradient(180deg, rgba(11, 26, 19, 0.35) 0%, rgba(11, 26, 19, 0.78) 100%),
+    url(/static/background.jpg) center / cover no-repeat,
+    linear-gradient(160deg, #3e7a50, #0b1a13);
 }
 
-/* ================= #glass panel (used on almost everything) ================= */
-.glass{
-  background:var(--glass-bg);
-  backdrop-filter:blur(20px) saturate(1.2);
-  -webkit-backdrop-filter:blur(20px) saturate(1.2);
-  border:1px solid var(--glass-line);
-  box-shadow:0 18px 50px rgba(0,0,0,.35);
+/* Frosted glass surface over background photo */
+.glass {
+  background: var(--surface);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
 }
 
-/* ================= #brand (top-left logo text) ================= */
-.brand{
-  position:fixed;top:26px;left:44px;z-index:5;
-  font-family:var(--font-display);
-  font-weight:300;
-  font-size:clamp(48px,7.5vw,100px);
-  letter-spacing:-.045em;
-  line-height:1;
-  font-variation-settings:"opsz" 144;
-  text-shadow:0 4px 40px rgba(0,0,0,.4);
-  transition:font-size .5s var(--ease),top .5s var(--ease);
-}
-body.chatting .brand{font-size:32px;top:22px}
-
-/* ================= #top-right controls (location + weather toggle) ================= */
-.topright{position:fixed;top:22px;right:28px;z-index:6;display:flex;align-items:center;width:306px}  /* same width as the weather card */
-.pill{
-  height:44px;border-radius:22px;
-  display:flex;align-items:center;gap:8px;
-  padding:0 18px;font-size:14px;
-  transition:background .2s,transform .2s;
-}
-.pill:hover{background:rgba(29,74,49,.7)}
-#locBtn{width:100%}
-#locBtn span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* ================= #weather card ================= */
-#wxCard{
-  --tone:232,184,74;                 /* glow colour (r,g,b), changes with the weather */
-  position:fixed;top:78px;right:28px;z-index:6;
-  width:306px;border-radius:30px;padding:22px 22px 20px;
-  display:none;cursor:pointer;overflow:hidden;
-  transition:width .45s var(--ease),padding .45s var(--ease),border-radius .45s,background .2s;
-  animation:rise .5s var(--ease);
-}
-#wxCard.show{display:block}
-#wxCard:hover{background:rgba(20,40,30,.72)}
-
-/* mood colours: the card glows differently for each kind of weather */
-#wxCard[data-tone="clear"]{--tone:240,190,70}
-#wxCard[data-tone="cloud"]{--tone:150,185,170}
-#wxCard[data-tone="rain"] {--tone:90,170,200}
-#wxCard[data-tone="storm"]{--tone:150,120,210}
-#wxCard[data-tone="mist"] {--tone:200,210,200}
-#wxCard[data-tone="snow"] {--tone:190,225,245}
-
-/* big soft glow behind the temperature */
-#wxCard::before{
-  content:"";position:absolute;inset:0;pointer-events:none;
-  background:
-    radial-gradient(70% 60% at 85% 8%,rgba(var(--tone),.34),transparent 70%),
-    radial-gradient(90% 50% at 0% 100%,rgba(var(--tone),.10),transparent 70%);
-  transition:background .6s;
-}
-#wxCard .full,#wxCard .mini{position:relative}
-
-/* ---- minimised version (small pill) ---- */
-#wxCard .mini{display:none;align-items:center;gap:10px;white-space:nowrap}
-#wxCard .mini .ic{font-size:20px;line-height:1}
-#wxCard .mini .mt{font-size:17px;font-weight:500}
-#wxCard .mini .mc{font-size:12.5px;color:var(--mist-dim);text-transform:capitalize}
-#wxCard.mini{width:auto;padding:9px 16px;border-radius:22px}
-#wxCard.mini .full{display:none}
-#wxCard.mini .mini{display:flex}
-
-/* ---- full version ---- */
-/* place + live dot */
-#wxCard .loc{font-size:12.5px;color:var(--mist-dim);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-#wxCard .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sprout)}
-#wxCard .live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--sprout);animation:pulse 2s infinite}
-@keyframes pulse{
-  0%{box-shadow:0 0 0 0 rgba(143,211,164,.6)}
-  70%{box-shadow:0 0 0 7px rgba(143,211,164,0)}
-  100%{box-shadow:0 0 0 0 rgba(143,211,164,0)}
+/* --- Brand Logo & Top-Right Controls --- */
+.brand {
+  position: fixed;
+  top: 26px;
+  left: 44px;
+  z-index: 10;
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: clamp(48px, 7.5vw, 100px);
+  letter-spacing: -0.045em;
+  line-height: 1;
+  font-variation-settings: "opsz" 144;
+  color: var(--ink);
+  transition: font-size 0.5s var(--ease), top 0.5s var(--ease);
 }
 
-/* temperature on the left, floating icon on the right */
-#wxCard .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
-#wxCard .t{font-family:var(--font-display);font-size:78px;font-weight:300;line-height:1;letter-spacing:-.06em;font-variation-settings:"opsz" 144}
-#wxCard .t sup{font-size:26px;letter-spacing:0;vertical-align:top;position:relative;top:10px;margin-left:3px;opacity:.7}
-#wxCard .orbicon{position:relative;width:84px;height:84px;display:grid;place-items:center;font-size:48px}
-#wxCard .orbicon::before{
-  content:"";position:absolute;inset:4px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,rgba(var(--tone),.55),rgba(var(--tone),.08) 70%);
-  border:1px solid rgba(var(--tone),.35);
-}
-#wxCard .orbicon span{position:relative;animation:floaty 5s ease-in-out infinite}
-@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-
-/* condition + feels like */
-#wxCard .c{font-family:var(--font-display);font-size:22px;font-weight:400;letter-spacing:-.02em;text-transform:capitalize}
-#wxCard .fl{font-size:13px;color:var(--mist-dim);margin:2px 0 16px}
-
-/* three small stat tiles */
-#wxCard .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-#wxCard .tile{background:rgba(255,255,255,.06);border:1px solid var(--glass-line);border-radius:16px;padding:10px 10px 11px}
-#wxCard .tile small{display:block;font-size:11.5px;color:var(--mist-dim);margin-bottom:3px}
-#wxCard .tile b{font-size:15px;font-weight:550}
-#wxCard .tile em{font-style:normal;font-size:11px;color:var(--mist-dim);margin-left:2px}
-/* humidity bar fills up to the real percentage */
-#wxCard .meter{height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:8px;overflow:hidden}
-#wxCard .meter i{display:block;height:100%;border-radius:2px;background:rgb(var(--tone));transition:width .8s var(--ease)}
-
-/* farming tip at the bottom */
-#wxCard .tip{margin-top:14px;padding-top:13px;border-top:1px solid var(--glass-line);font-size:13px;line-height:1.5;color:var(--mist)}
-
-#wxCard .msg2{font-size:13px;color:var(--mist-dim)}
-
-/* ================= #main area ================= */
-main{position:fixed;inset:0;z-index:2;display:none}
-body.ready main{display:block}
-
-/* ---- hero (what you see before the first question) ---- */
-#hero{
-  position:absolute;z-index:3;left:0;right:0;top:50%;
-  transform:translateY(-50%);
-  text-align:center;padding:0 20px;
-}
-body.chatting #hero{display:none}
-#hero p{
-  font-family:var(--font-display);
-  font-weight:300;
-  font-size:clamp(26px,3.6vw,42px);
-  letter-spacing:-.02em;
-  line-height:1.2;
-  margin-bottom:30px;
-  text-shadow:0 2px 24px rgba(0,0,0,.5);
-}
-.sugs{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:760px;margin:0 auto}
-.sug{padding:11px 18px;border-radius:18px;font-size:14px;transition:background .2s,transform .2s var(--ease),border-color .2s}
-.sug:hover{background:rgba(29,74,49,.75);transform:translateY(-2px);border-color:rgba(232,184,74,.5)}
-
-/* ================= #chat messages ================= */
-#chat{position:absolute;inset:0;overflow-y:auto;padding:100px 20px 150px;scroll-behavior:smooth}
-.wrap{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
-.msg{
-  max-width:88%;padding:14px 18px;border-radius:22px;
-  line-height:1.65;font-size:15px;
-  animation:rise .3s var(--ease);
-  overflow-wrap:anywhere;
-}
-/* your message: solid wheat bubble so it stands out from the glass replies */
-.msg.user{
-  align-self:flex-end;
-  background:var(--grain);color:var(--grain-ink);
-  border-bottom-right-radius:6px;
-  white-space:pre-wrap;font-weight:450;
-  box-shadow:0 8px 24px rgba(0,0,0,.25);
-}
-.msg.ai{align-self:flex-start;border-bottom-left-radius:6px}
-.msg.err{color:var(--danger);border-color:rgba(255,160,140,.4)}
-
-/* markdown inside AI replies */
-.msg.ai>*:first-child{margin-top:0}
-.msg.ai>*:last-child{margin-bottom:0}
-.msg.ai p,.msg.ai ul,.msg.ai ol,.msg.ai table,.msg.ai pre{margin:10px 0}
-.msg.ai ul,.msg.ai ol{padding-left:22px}
-.msg.ai li{margin:3px 0}
-.msg.ai h1,.msg.ai h2,.msg.ai h3{font-family:var(--font-display);font-weight:400;font-size:19px;letter-spacing:-.01em;margin:16px 0 6px}
-.msg.ai table{border-collapse:collapse;display:block;overflow-x:auto;font-size:13.5px}
-.msg.ai th,.msg.ai td{border:1px solid var(--glass-line);padding:7px 11px;text-align:left}
-.msg.ai th{background:rgba(232,184,74,.12)}
-.msg.ai code{background:rgba(255,255,255,.1);padding:1px 6px;border-radius:5px;font-size:13px}
-.msg.ai pre{background:rgba(0,0,0,.45);padding:12px;border-radius:12px;overflow-x:auto}
-.msg.ai pre code{background:none;padding:0}
-
-/* "typing" dots */
-.dots{display:flex;gap:5px;padding:4px 0}
-.dots i{width:7px;height:7px;border-radius:50%;background:var(--grain);opacity:.4;animation:bounce 1.1s infinite}
-.dots i:nth-child(2){animation-delay:.15s}
-.dots i:nth-child(3){animation-delay:.3s}
-@keyframes bounce{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
-@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-
-/* ================= #input bar (bottom) ================= */
-.bar{
-  position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
-  width:min(940px,calc(100% - 32px));min-height:64px;
-  border-radius:34px;
-  display:flex;align-items:flex-end;gap:6px;padding:9px 10px;
-  background:rgba(11,24,18,.8);
-}
-.bar:focus-within{border-color:rgba(232,184,74,.45)}
-.ib{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:21px;flex:none;transition:background .2s,opacity .2s;opacity:.85}
-.ib:hover{background:rgba(255,255,255,.1);opacity:1}
-#q{
-  flex:1;background:none;border:0;outline:0;
-  color:var(--mist);font:inherit;font-size:15.5px;
-  resize:none;max-height:150px;padding:12px 6px;line-height:1.4;
-}
-#q::placeholder{color:rgba(233,240,227,.45)}
-
-/* "Think" toggle */
-#think{display:flex;align-items:center;gap:6px;height:44px;padding:0 14px;border-radius:22px;font-size:14px;opacity:.7;flex:none;transition:background .2s,opacity .2s}
-#think:hover{opacity:1}
-#think.on{background:rgba(232,184,74,.2);color:var(--grain);opacity:1}
-
-/* mic + send */
-#mic svg{width:22px;height:22px}
-#mic.rec{background:rgba(220,70,55,.55)}
-#send{background:var(--grain);color:var(--grain-ink);opacity:1;font-size:18px}
-#send:hover{background:#f2c966}
-#send:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.4);cursor:not-allowed}
-
-/* ================= #location popup ================= */
-#overlay{
-  position:fixed;inset:0;z-index:20;display:none;place-items:center;
-  background:rgba(5,12,8,.45);
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  padding:16px;
-}
-#overlay.show{display:grid}
-.modal{
-  position:relative;width:min(450px,100%);
-  border-radius:30px;padding:42px 36px 34px;text-align:center;
-  animation:rise .45s var(--ease);
-}
-.modal h3{font-family:var(--font-display);font-weight:300;font-size:38px;letter-spacing:-.04em;margin-bottom:20px}
-.modal h2{font-size:19px;font-weight:550;margin-bottom:8px}
-.modal .sub{font-size:14px;color:var(--mist-dim);line-height:1.55;margin-bottom:26px}
-.modal label{display:block;text-align:left;font-size:13px;font-weight:500;color:var(--mist-dim);margin:0 0 7px 4px}
-
-/* dropdown-style search boxes */
-.combo{position:relative;margin-bottom:18px}
-.combo input{
-  width:100%;height:52px;border-radius:16px;
-  border:1px solid var(--glass-line);background:rgba(255,255,255,.06);
-  color:var(--mist);font:inherit;font-size:15px;
-  padding:0 40px 0 16px;outline:0;transition:border-color .2s,background .2s;
-}
-.combo input:focus{border-color:rgba(232,184,74,.6);background:rgba(255,255,255,.09)}
-.combo input:disabled{opacity:.4}
-.combo input::placeholder{color:rgba(233,240,227,.42)}
-.chev{position:absolute;right:16px;top:15px;opacity:.55;pointer-events:none}
-.combo ul{
-  position:absolute;left:0;right:0;top:58px;z-index:30;
-  max-height:210px;overflow-y:auto;list-style:none;padding:6px;
-  border-radius:16px;background:rgba(10,22,16,.97);
-  border:1px solid var(--glass-line);display:none;text-align:left;
-}
-.combo.open ul{display:block}
-.combo li{padding:9px 12px;border-radius:10px;font-size:14.5px;cursor:pointer}
-.combo li:hover{background:rgba(232,184,74,.16)}
-.combo li.dim{opacity:.5;cursor:default}
-.combo li.dim:hover{background:none}
-
-/* continue button */
-#go{
-  width:100%;height:54px;border-radius:27px;
-  background:var(--grain);color:var(--grain-ink);
-  font-weight:600;font-size:15px;margin-top:6px;
-  transition:transform .2s,box-shadow .2s,background .2s;
-}
-#go:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 28px rgba(232,184,74,.3)}
-#go:disabled{background:rgba(255,255,255,.14);color:rgba(255,255,255,.4);cursor:not-allowed}
-#x{position:absolute;top:14px;right:16px;width:34px;height:34px;border-radius:50%;font-size:18px;display:none}
-#x:hover{background:rgba(255,255,255,.12)}
-
-/* ================= #listening popup (voice) ================= */
-#listen{
-  position:fixed;inset:0;z-index:25;display:none;place-items:center;
-  background:rgba(5,12,8,.5);
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  padding:16px;
-}
-#listen.show{display:grid}
-.lbox{width:min(420px,100%);border-radius:30px;padding:34px 30px 28px;text-align:center;animation:rise .35s var(--ease)}
-.orb{
-  position:relative;width:84px;height:84px;margin:0 auto 22px;border-radius:50%;
-  background:linear-gradient(145deg,#3f8a55,var(--field));
-  display:grid;place-items:center;
-}
-.orb svg{width:36px;height:36px;color:#fff;position:relative;z-index:2}
-/* two rings that ripple outwards */
-.orb::before,.orb::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(143,211,164,.55);animation:ring 2s ease-out infinite}
-.orb::after{animation-delay:1s}
-@keyframes ring{from{transform:scale(1);opacity:.8}to{transform:scale(2.1);opacity:0}}
-.lbox h4{font-family:var(--font-display);font-weight:400;font-size:24px;letter-spacing:-.02em;margin-bottom:4px}
-.lbox .hint{font-size:13.5px;color:var(--mist-dim);margin-bottom:20px}
-#wave{width:100%;height:64px;display:block;margin-bottom:10px}
-#timer{font-variant-numeric:tabular-nums;font-size:14px;color:var(--mist-dim);margin-bottom:22px}
-.lbtns{display:flex;gap:12px}
-.lbtns button{flex:1;height:48px;border-radius:24px;font-size:14.5px;font-weight:550;transition:transform .2s,background .2s}
-#lcancel{background:rgba(255,255,255,.1)}
-#lcancel:hover{background:rgba(255,255,255,.18)}
-#ldone{background:var(--grain);color:var(--grain-ink)}
-#ldone:hover{transform:translateY(-1px)}
-
-/* ================= #mobile ================= */
-@media(max-width:640px){
-  .brand{left:20px}
-  .topright{right:14px;width:250px}
-  #wxCard{right:14px;width:250px}
-  #think b{display:none}
-  .modal{padding:34px 22px 26px}
+body.chatting .brand {
+  font-size: 32px;
+  top: 22px;
 }
 
-/* people who turned off animations in their device settings */
-@media(prefers-reduced-motion:reduce){
-  *{animation:none!important;transition:none!important}
+.topright {
+  position: fixed;
+  top: 22px;
+  right: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pill {
+  height: 34px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.pill:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--surface-alt);
+}
+
+.pill svg {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+#locBtn span {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* --- Weather Telemetry Widget --- */
+#wxCard {
+  position: fixed;
+  top: 72px;
+  right: 24px;
+  z-index: 9;
+  width: 312px;
+  border-radius: var(--radius-md);
+  padding: 18px;
+  background: var(--surface-pop);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  display: none;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s ease, border-color 0.2s ease;
+  animation: fadeUp 0.25s var(--ease);
+}
+
+#wxCard.show {
+  display: block;
+}
+
+#wxCard:hover {
+  border-color: var(--line-strong);
+}
+
+/* Compact pill mode when minimised */
+#wxCard .mini {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+#wxCard .mini .ic {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+#wxCard .mini .ic svg {
+  width: 15px;
+  height: 15px;
+}
+
+#wxCard .mini .mt {
+  font-variant-numeric: tabular-nums;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#wxCard .mini .mc {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-transform: capitalize;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+#wxCard.mini {
+  width: auto;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+#wxCard.mini .full {
+  display: none;
+}
+
+#wxCard.mini .mini {
+  display: flex;
+}
+
+/* Full telemetry readout */
+#wxCard .loc {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+#wxCard .loc-name {
+  font-weight: 500;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#wxCard .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--live);
+}
+
+#wxCard .live::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--live);
+}
+
+#wxCard .top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+#wxCard .t {
+  font-variant-numeric: tabular-nums;
+  font-size: 38px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+}
+
+#wxCard .t sup {
+  font-size: 16px;
+  letter-spacing: 0;
+  vertical-align: top;
+  position: relative;
+  top: 3px;
+  margin-left: 2px;
+  color: var(--ink-3);
+}
+
+#wxCard .wx-meta {
+  text-align: right;
+}
+
+#wxCard .c {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  text-transform: capitalize;
+}
+
+#wxCard .fl {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+/* 3-column instrument readout */
+#wxCard .tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+#wxCard .tile {
+  padding: 4px 6px;
+}
+
+#wxCard .tile small {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-bottom: 2px;
+}
+
+#wxCard .tile b {
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#wxCard .tile em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-left: 2px;
+}
+
+#wxCard .meter {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-subtle);
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+#wxCard .meter i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.6s var(--ease);
+}
+
+#wxCard .tip {
+  margin-top: 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+#wxCard .tip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+#wxCard .msg2 {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* --- Main Workspace --- */
+main {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: none;
+}
+
+body.ready main {
+  display: block;
+}
+
+/* --- Hero / Empty State --- */
+#hero {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  top: 44%;
+  transform: translateY(-50%);
+  padding: 0 24px;
+}
+
+body.chatting #hero {
+  display: none;
+}
+
+.hero-inner {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.hero-eyebrow {
+  display: none;
+}
+
+#hero p {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(24px, 3vw, 32px);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.hero-sub {
+  font-size: 14.5px;
+  color: var(--ink-2);
+  margin-bottom: 28px;
+}
+
+.sugs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.sug {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, transform 0.15s var(--ease), background-color 0.15s ease;
+}
+
+.sug::after {
+  content: "→";
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ink-3);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.sug:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-alt);
+  transform: translateY(-1px);
+}
+
+.sug:hover::after {
+  color: var(--accent);
+  transform: translate(1px, -1px);
+}
+
+/* --- Conversation Stream --- */
+#chat {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 96px 24px 160px;
+  scroll-behavior: smooth;
+}
+
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.msg {
+  line-height: 1.65;
+  font-size: 15px;
+  animation: fadeUp 0.22s var(--ease);
+  overflow-wrap: anywhere;
+}
+
+/* User prompt bubble */
+.msg.user {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: 11px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  font-size: 14.5px;
+}
+
+/* Assistant response card */
+.msg.ai {
+  align-self: stretch;
+  max-width: 100%;
+  padding: 20px 22px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+.msg.err {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+/* Markdown formatting inside AI replies */
+.msg.ai > *:first-child { margin-top: 0; }
+.msg.ai > *:last-child { margin-bottom: 0; }
+.msg.ai p, .msg.ai ul, .msg.ai ol, .msg.ai table, .msg.ai pre { margin: 10px 0; }
+.msg.ai ul, .msg.ai ol { padding-left: 20px; }
+.msg.ai li { margin: 4px 0; }
+.msg.ai h1, .msg.ai h2, .msg.ai h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 18px 0 6px;
+}
+.msg.ai strong { font-weight: 600; color: var(--ink); }
+.msg.ai table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  margin: 14px 0;
+}
+.msg.ai th, .msg.ai td {
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+}
+.msg.ai th {
+  background: var(--bg-subtle);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-2);
+}
+.msg.ai code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg-subtle);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.msg.ai pre {
+  background: var(--bg-subtle);
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.msg.ai pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Loading pulse indicator */
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 2px;
+}
+.dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  opacity: 0.35;
+  animation: pulseDot 1.2s infinite ease-in-out;
+}
+.dots i:nth-child(2) { animation-delay: 0.15s; }
+.dots i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes pulseDot {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.9); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Bottom Composer Dock --- */
+.bar {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 32px));
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-lg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bar:focus-within {
+  border-color: var(--accent);
+}
+
+.ib {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  flex: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ib:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  color: var(--ink);
+}
+
+.ib svg {
+  width: 17px;
+  height: 17px;
+}
+
+#q {
+  flex: 1;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  font-size: 14.5px;
+  resize: none;
+  max-height: 140px;
+  padding: 7px 6px;
+  line-height: 1.45;
+}
+
+#q::placeholder {
+  color: var(--ink-3);
+}
+
+/* Deep reasoning toggle */
+#think {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  border: 1px solid transparent;
+  flex: none;
+  transition: all 0.15s ease;
+}
+
+#think svg {
+  width: 14px;
+  height: 14px;
+}
+
+#think:hover {
+  background: var(--bg-subtle);
+  color: var(--ink);
+}
+
+#think.on {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 30%, transparent);
+}
+
+#mic.rec {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+#send {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+#send:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--accent-ink);
+}
+
+#send:disabled {
+  background: var(--bg-subtle);
+  color: var(--ink-3);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* --- Location Modal --- */
+#overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  place-items: center;
+  background: rgba(12, 18, 14, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 16px;
+}
+
+#overlay.show {
+  display: grid;
+}
+
+.modal {
+  position: relative;
+  width: min(420px, 100%);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+  animation: fadeUp 0.25s var(--ease);
+}
+
+.modal h3 {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: 38px;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variation-settings: "opsz" 144;
+  color: var(--ink);
+  margin-bottom: 18px;
+}
+
+.modal h2 {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.modal .sub {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  margin-bottom: 22px;
+}
+
+.modal label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin: 0 0 6px 2px;
+}
+
+/* Searchable Combobox */
+.combo {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.combo input {
+  width: 100%;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-alt);
+  color: var(--ink);
+  font-size: 14px;
+  padding: 0 36px 0 12px;
+  outline: 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.combo input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.combo input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.combo input::placeholder {
+  color: var(--ink-3);
+}
+
+.chev {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.combo ul {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46px;
+  z-index: 40;
+  max-height: 196px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 5px;
+  border-radius: var(--radius-sm);
+  background: rgba(10, 22, 16, 0.97);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-md);
+  display: none;
+}
+
+.combo.open ul {
+  display: block;
+}
+
+.combo li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.combo li:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.combo li.dim {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.combo li.dim:hover {
+  background: none;
+  color: var(--ink-3);
+}
+
+#go {
+  width: 100%;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+  font-size: 14px;
+  margin-top: 6px;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+#go:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+#go:disabled {
+  background: var(--bg-subtle);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+#x {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  display: none;
+  place-items: center;
+}
+
+#x:hover {
+  background: var(--bg-subtle);
+  color: var(--ink);
+}
+
+/* --- Voice Recording Modal --- */
+#listen {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: none;
+  place-items: center;
+  background: rgba(12, 18, 14, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 16px;
+}
+
+#listen.show {
+  display: grid;
+}
+
+.lbox {
+  width: min(380px, 100%);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+  animation: fadeUp 0.22s var(--ease);
+}
+
+.orb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+
+.orb svg {
+  width: 24px;
+  height: 24px;
+  position: relative;
+  z-index: 2;
+}
+
+.orb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  animation: pulseRing 1.8s ease-out infinite;
+}
+
+@keyframes pulseRing {
+  from { transform: scale(1); opacity: 0.6; }
+  to { transform: scale(1.65); opacity: 0; }
+}
+
+.lbox h4 {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.lbox .hint {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 18px;
+}
+
+#wave {
+  width: 100%;
+  height: 52px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+#timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-bottom: 20px;
+}
+
+.lbtns {
+  display: flex;
+  gap: 10px;
+}
+
+.lbtns button {
+  flex: 1;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+#lcancel {
+  background: var(--bg-subtle);
+  color: var(--ink-2);
+}
+
+#lcancel:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+#ldone {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+#ldone:hover {
+  background: var(--accent-hover);
+}
+
+/* --- Non-blocking Toast Notification --- */
+#toast {
+  position: fixed;
+  bottom: 92px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 50;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* --- Responsive Adjustments --- */
+@media (max-width: 640px) {
+  .brand { left: 20px; }
+  .topright { right: 14px; }
+  #wxCard { right: 14px; width: calc(100% - 28px); max-width: 300px; }
+  .sugs { grid-template-columns: 1fr; }
+  #think b { display: none; }
+  .modal { padding: 26px 20px 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 </style>
 </head>
 
 <body>
-<!-- background photo -->
 <div class="bg"></div>
 
-<!-- logo text -->
+<!-- Brand Logo -->
 <div class="brand">AgroSense</div>
 
-<!-- top right: weather toggle + location button (hidden until a location is chosen) -->
+<!-- Top-Right Location Control -->
 <div class="topright" id="topright" style="display:none">
-  <button class="pill glass" id="locBtn" title="Change location">📍 <span id="locTxt"></span></button>
+  <button class="pill glass" id="locBtn" title="Change location">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+    <span id="locTxt"></span>
+  </button>
 </div>
 
-<!-- weather card (filled by JS) -->
-<div class="glass" id="wxCard" title="Click to minimise / expand"></div>
+<!-- Live Weather Telemetry Card -->
+<div class="glass" id="wxCard" title="Click to minimise or expand"></div>
 
 <main>
-  <!-- first screen: tagline + question ideas -->
+  <!-- Empty State / Hero -->
   <div id="hero">
-    <p>Your intelligent agriculture assistant</p>
-    <div class="sugs">
-      <button class="sug glass">What crops are suitable for my district?</button>
-      <button class="sug glass">What's the weather today?</button>
-      <button class="sug glass">Which crops have the highest profitability?</button>
-      <button class="sug glass">What is the soil condition in my district?</button>
+    <div class="hero-inner">
+      <div class="hero-eyebrow">Regional Agronomy &amp; Telemetry</div>
+      <p>Your intelligent agriculture assistant</p>
+      <div class="hero-sub">Ask about crop suitability, soil health, market profitability, or local weather conditions.</div>
+      <div class="sugs">
+        <button class="sug glass">What crops are suitable for my district?</button>
+        <button class="sug glass">What's the weather today?</button>
+        <button class="sug glass">Which crops have the highest profitability?</button>
+        <button class="sug glass">What is the soil condition in my district?</button>
+      </div>
     </div>
   </div>
 
-  <!-- conversation -->
+  <!-- Conversation Stream -->
   <div id="chat"><div class="wrap" id="wrap"></div></div>
 
-  <!-- input bar -->
+  <!-- Input Dock -->
   <div class="bar glass">
-    <button class="ib" id="plus" title="New chat">+</button>
+    <button class="ib" id="plus" title="New chat" aria-label="New chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+    </button>
     <textarea id="q" rows="1" placeholder="Ask AgroSense anything..."></textarea>
-    <button id="think" title="Ask for a more detailed, reasoned answer">🧠 <b style="font-weight:400">Think</b></button>
+    <button id="think" title="Enable deeper agronomic reasoning">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m6.8 15-3.5 2"/><path d="m20.7 17-3.5-2"/><path d="M6.8 9 3.3 7"/><path d="m20.7 7-3.5 2"/><circle cx="12" cy="12" r="4"/></svg>
+      <b style="font-weight:500">Think</b>
+    </button>
     <button class="ib" id="mic" title="Speak">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/><path d="M8.5 21h7"/></svg>
     </button>
-    <button class="ib" id="send" title="Send" disabled>➤</button>
+    <button class="ib" id="send" title="Send" aria-label="Send message" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </button>
   </div>
 </main>
 
-<!-- location popup -->
+<!-- Location Selector Modal -->
 <div id="overlay">
   <div class="modal glass">
-    <button id="x" title="Close">✕</button>
+    <button id="x" title="Close" aria-label="Close">✕</button>
     <h3>AgroSense</h3>
-    <h2>📍 Let's personalize your experience</h2>
-    <p class="sub">Select your location to get agriculture insights relevant to your area.</p>
+    <h2>Set your field location</h2>
+    <p class="sub">Select your state and district to calibrate weather telemetry, soil data, and crop recommendations.</p>
     <label>State</label>
     <div class="combo" id="stateC"><input placeholder="Select your state" autocomplete="off"><span class="chev">▾</span><ul></ul></div>
     <label>District</label>
@@ -428,7 +1205,7 @@ body.chatting #hero{display:none}
   </div>
 </div>
 
-<!-- voice popup -->
+<!-- Voice Input Modal -->
 <div id="listen">
   <div class="lbox glass">
     <div class="orb">
@@ -445,24 +1222,55 @@ body.chatting #hero{display:none}
   </div>
 </div>
 
+<!-- Non-blocking Toast -->
+<div id="toast" role="status" aria-live="polite"></div>
+
 <script>
-/* ================= #helpers & #app state ================= */
-const $ = s => document.querySelector(s);   // short way to grab an element
+/* --- Helpers & State --- */
+const $ = s => document.querySelector(s);
 
-let DATA = {};          // { state: [districts] } loaded from /api/locations
-let LOC = null;         // chosen location { state, district }
-let busy = false;       // true while waiting for a reply
-let thinkOn = false;    // "Think" button state
-const wxCache = {};     // weather results saved for 10 minutes
+// Endpoint paths kept identical to the backend routes
+const API = {
+  locations: '/api/locations',
+  weather:   '/api/weather',
+  chat:      '/api/chat',
+  voice:     '/api/voice'
+};
 
+// Fallback dataset used only if the backend server isn't running (e.g. static preview)
+const FALLBACK_LOCATIONS = {
+  'Madhya Pradesh': ['Sehore', 'Bhopal', 'Indore', 'Ujjain', 'Hoshangabad', 'Vidisha', 'Jabalpur'],
+  'Punjab': ['Ludhiana', 'Patiala', 'Amritsar', 'Jalandhar', 'Bathinda', 'Sangrur'],
+  'Maharashtra': ['Nashik', 'Pune', 'Nagpur', 'Satara', 'Kolhapur', 'Ahmednagar'],
+  'Uttar Pradesh': ['Varanasi', 'Lucknow', 'Meerut', 'Kanpur', 'Agra', 'Gorakhpur'],
+  'Karnataka': ['Mysuru', 'Belagavi', 'Dharwad', 'mandya', 'Hassan', 'Tumakuru'],
+  'Gujarat': ['Rajkot', 'Anand', 'Junagadh', 'Mehsana', 'Surat', 'Bhavnagar'],
+  'Rajasthan': ['Jaipur', 'Kota', 'Ganganagar', 'Udaipur', 'Jodhpur', 'Alwar']
+};
 
-/* ================= #searchable dropdown (state / district) ================= */
+let DATA = {};
+let LOC = null;
+let busy = false;
+let thinkOn = false;
+let offlinePreview = false;
+const wxCache = {};
+
+// Show a brief toast message instead of blocking browser alerts
+let toastTimer = null;
+function notify(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3400);
+}
+
+/* --- Searchable Combobox --- */
 function Combo(root, getOpts, allowCustom, onChange) {
   const inp = root.querySelector('input');
   const ul  = root.querySelector('ul');
   const close = () => root.classList.remove('open');
 
-  // build the list of options (filtered by what the user typed)
   function render(showAll) {
     const text = inp.value.trim().toLowerCase();
     const opts = getOpts();
@@ -472,12 +1280,10 @@ function Combo(root, getOpts, allowCustom, onChange) {
     list.forEach(o => {
       const li = document.createElement('li');
       li.textContent = o;
-      // mousedown (not click) so it fires before the input loses focus
       li.onmousedown = e => { e.preventDefault(); inp.value = o; close(); onChange(); };
       ul.appendChild(li);
     });
 
-    // district box lets people type a name that isn't in the list
     if (allowCustom && text && !opts.some(o => o.toLowerCase() === text)) {
       const li = document.createElement('li');
       li.textContent = 'Use "' + inp.value.trim() + '"';
@@ -487,7 +1293,8 @@ function Combo(root, getOpts, allowCustom, onChange) {
 
     if (!ul.children.length) {
       const li = document.createElement('li');
-      li.className = 'dim'; li.textContent = 'No matches';
+      li.className = 'dim';
+      li.textContent = 'No matches';
       ul.appendChild(li);
     }
   }
@@ -498,7 +1305,6 @@ function Combo(root, getOpts, allowCustom, onChange) {
 
   return {
     inp,
-    // returns the matched option, a custom value (if allowed) or null
     value() {
       const t = inp.value.trim();
       if (!t) return null;
@@ -513,24 +1319,24 @@ let prevState = null;
 
 const stateCombo = Combo($('#stateC'), () => Object.keys(DATA), false, () => {
   const s = stateCombo.value();
-  $('#distC input').disabled = !s;                       // district unlocks after state
-  if (s !== prevState) { distCombo.set(''); prevState = s; }  // new state = clear district
+  $('#distC input').disabled = !s;
+  if (s !== prevState) { distCombo.set(''); prevState = s; }
   refreshGo();
 });
 
 const distCombo = Combo($('#distC'), () => DATA[stateCombo.value()] || [], true, refreshGo);
 
-// enable "Continue" only when both boxes are filled
-function refreshGo() { $('#go').disabled = !(stateCombo.value() && distCombo.value()); }
+function refreshGo() {
+  $('#go').disabled = !(stateCombo.value() && distCombo.value());
+}
 
-
-/* ================= #location popup ================= */
+/* --- Location Modal --- */
 function openModal() {
   stateCombo.set(LOC ? LOC.state : '');
   prevState = LOC ? LOC.state : null;
   $('#distC input').disabled = !LOC;
   distCombo.set(LOC ? LOC.district : '');
-  $('#x').style.display = LOC ? 'block' : 'none';   // close button only after first selection
+  $('#x').style.display = LOC ? 'grid' : 'none';
   $('#overlay').classList.add('show');
   refreshGo();
 }
@@ -548,38 +1354,37 @@ $('#go').onclick = () => {
   $('#topright').style.display = 'flex';
   $('#wxCard').classList.add('show');
 
-  // start small if chat is open or the screen is a phone
   setWxMini(document.body.classList.contains('chatting') || window.innerWidth <= 640);
   loadWx();
   $('#q').focus();
 };
 
-
-/* ================= #weather card ================= */
-// escape text before putting it into html
+/* --- Weather Telemetry Card --- */
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const wxCard = $('#wxCard');
 let wxLast = null, wxTimer = null;
 
-// pick an emoji from the weather text
+// Clean monochrome SVG glyphs for weather states
 function wxIcon(c) {
   c = String(c || '').toLowerCase();
-  if (c.includes('thunder')) return '⛈️';
-  if (c.includes('drizzle') || c.includes('rain') || c.includes('shower')) return '🌧️';
-  if (c.includes('snow') || c.includes('sleet')) return '❄️';
-  if (/mist|fog|haze|smoke|dust|sand/.test(c)) return '🌫️';
-  if (c.includes('clear')) return '☀️';
-  if (c.includes('few clouds') || c.includes('scattered')) return '⛅';
-  if (c.includes('cloud') || c.includes('overcast')) return '☁️';
-  return '⛅';
+  if (c.includes('thunder')) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="m13 12-3 5h4l-3 5"/></svg>';
+  }
+  if (/drizzle|rain|shower/.test(c)) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>';
+  }
+  if (c.includes('clear')) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>';
 }
 
-function setWxMini(m) { wxCard.classList.toggle('mini', !!m); }
+function setWxMini(m) {
+  wxCard.classList.toggle('mini', !!m);
+}
 
-// round to 1 decimal if it's a number
 const fmt = v => (typeof v === 'number' ? Math.round(v * 10) / 10 : v);
 
-// pick a mood for the card colours from the weather text
 function wxTone(c) {
   c = String(c || '').toLowerCase();
   if (c.includes('thunder')) return 'storm';
@@ -590,49 +1395,47 @@ function wxTone(c) {
   return 'cloud';
 }
 
-// one short farming tip based on the numbers (simple rules, not a forecast)
 function wxTip(d) {
   const t = Number(d.temp), h = Number(d.humidity), w = Number(d.wind), r = Number(d.rain_1h);
-  if (r > 0)   return '🌱 It is raining now, so hold off on irrigation.';
-  if (t >= 38) return '🌱 Very hot. Water crops early morning or after sunset.';
-  if (w >= 8)  return '🌱 Strong wind. Avoid spraying pesticides today.';
-  if (h >= 85) return '🌱 High humidity. Keep an eye out for fungal disease.';
-  if (h <= 30) return '🌱 Air is dry. Soil may need extra watering.';
-  return '🌱 Good conditions for field work today.';
+  if (r > 0)   return 'Precipitation detected — pause scheduled irrigation.';
+  if (t >= 38) return 'High heat stress — irrigate early morning or post-sunset.';
+  if (w >= 8)  return 'Elevated wind speeds — avoid foliar spraying today.';
+  if (h >= 85) return 'High relative humidity — monitor canopy for fungal blight.';
+  if (h <= 30) return 'Low atmospheric moisture — check root-zone soil tension.';
+  return 'Optimal microclimate window for standard field operations.';
 }
 
-// draw the weather data into the card (small + full version both live inside)
 function drawWx(d) {
   wxLast = d;
   const ic = wxIcon(d.condition);
   const place = esc(LOC.district + ', ' + LOC.state);
   const hum = Math.max(0, Math.min(100, Number(d.humidity) || 0));
-  wxCard.dataset.tone = wxTone(d.condition);   // changes the glow colour
+  wxCard.dataset.tone = wxTone(d.condition);
 
   wxCard.innerHTML = `
   <div class="mini"><span class="ic">${ic}</span><span class="mt">${fmt(d.temp)}°C</span><span class="mc">${esc(d.condition)}</span></div>
   <div class="full">
-    <div class="loc"><span>📍 ${place}</span><span class="live">Live</span></div>
+    <div class="loc"><span class="loc-name">${place}</span><span class="live">Live</span></div>
     <div class="top">
       <div class="t">${Math.round(d.temp)}<sup>°C</sup></div>
-      <div class="orbicon"><span>${ic}</span></div>
+      <div class="wx-meta">
+        <div class="c">${esc(d.condition)}</div>
+        <div class="fl">Feels ${fmt(d.feels_like)}°C</div>
+      </div>
     </div>
-    <div class="c">${esc(d.condition)}</div>
-    <div class="fl">Feels like ${fmt(d.feels_like)}°C</div>
     <div class="tiles">
       <div class="tile"><small>Humidity</small><b>${d.humidity}<em>%</em></b><div class="meter"><i style="width:${hum}%"></i></div></div>
       <div class="tile"><small>Wind</small><b>${d.wind}<em>m/s</em></b></div>
-      <div class="tile"><small>Rain, 1h</small><b>${d.rain_1h}<em>mm</em></b></div>
+      <div class="tile"><small>Rain 1h</small><b>${d.rain_1h}<em>mm</em></b></div>
     </div>
-    <div class="tip">${wxTip(d)}</div>
+    <div class="tip"><span class="tip-dot"></span><span>${wxTip(d)}</span></div>
   </div>`;
 }
 
-// show a plain message instead of data (errors)
 function wxMsg(html) {
   wxCard.innerHTML =
-    '<div class="mini"><span class="ic">⛅</span><span class="mc">' + html + '</span></div>' +
-    '<div class="full"><div class="loc"><span>📍 ' + esc(LOC.district + ', ' + LOC.state) + '</span></div><div class="msg2">' + html + '</div></div>';
+    '<div class="mini"><span class="ic">' + wxIcon('cloud') + '</span><span class="mc">' + html + '</span></div>' +
+    '<div class="full"><div class="loc"><span class="loc-name">' + esc(LOC.district + ', ' + LOC.state) + '</span></div><div class="msg2">' + html + '</div></div>';
 }
 
 async function loadWx() {
@@ -640,31 +1443,41 @@ async function loadWx() {
   const loc = LOC, key = loc.state + '|' + loc.district, cached = wxCache[key];
 
   if (cached && Date.now() - cached.t < 600000) {
-    drawWx(cached.d);                 // fresh enough, reuse it
+    drawWx(cached.d);
   } else {
     wxCard.innerHTML = '<div class="mini"><div class="dots"><i></i><i></i><i></i></div></div><div class="full"><div class="dots"><i></i><i></i><i></i></div></div>';
     try {
-      const r = await fetch('/api/weather?' + new URLSearchParams(loc));
+      const r = await fetch(API.weather + '?' + new URLSearchParams(loc));
       const d = await r.json();
       if (!r.ok) throw 0;
       wxCache[key] = { t: Date.now(), d };
-      if (LOC === loc) drawWx(d);     // ignore if the user changed location meanwhile
-    } catch { if (LOC === loc) wxMsg('Weather unavailable'); }
+      if (LOC === loc) drawWx(d);
+    } catch {
+      if (LOC === loc) {
+        if (offlinePreview) {
+          const mock = { temp: 28.4, feels_like: 29.1, humidity: 58, wind: 3.4, rain_1h: 0, condition: 'clear sky' };
+          wxCache[key] = { t: Date.now(), d: mock };
+          drawWx(mock);
+        } else {
+          wxMsg('Weather unavailable');
+        }
+      }
+    }
   }
 
   clearTimeout(wxTimer);
-  wxTimer = setTimeout(loadWx, 600000);   // refresh every 10 minutes
+  wxTimer = setTimeout(loadWx, 600000);
 }
 
 wxCard.onclick = () => setWxMini(!wxCard.classList.contains('mini'));
 
-
-/* ================= #chat ================= */
+/* --- Chat Flow --- */
 const wrap = $('#wrap'), q = $('#q');
 
-function scrollDown() { $('#chat').scrollTop = $('#chat').scrollHeight; }
+function scrollDown() {
+  $('#chat').scrollTop = $('#chat').scrollHeight;
+}
 
-// add a bubble to the chat (html = true when content is html)
 function addMsg(cls, content, html) {
   const d = document.createElement('div');
   d.className = 'msg ' + cls + (cls.includes('ai') ? ' glass' : '');
@@ -674,9 +1487,11 @@ function addMsg(cls, content, html) {
   return d;
 }
 
-function setBusy(b) { busy = b; $('#send').disabled = b || !q.value.trim(); }
+function setBusy(b) {
+  busy = b;
+  $('#send').disabled = b || !q.value.trim();
+}
 
-// send a typed question to the server
 async function ask(text) {
   text = text.trim();
   if (!text || busy || !LOC) return;
@@ -684,15 +1499,16 @@ async function ask(text) {
   document.body.classList.add('chatting');
   setWxMini(true);
   addMsg('user', text);
-  q.value = ''; q.style.height = 'auto';
+  q.value = '';
+  q.style.height = 'auto';
   setBusy(true);
 
   const wait = addMsg('ai', '<div class="dots"><i></i><i></i><i></i></div>', true);
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 180000);   // give up after 3 minutes
+  const timer = setTimeout(() => ctl.abort(), 180000);
 
   try {
-    const r = await fetch('/api/chat', {
+    const r = await fetch(API.chat, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: ctl.signal,
@@ -700,33 +1516,44 @@ async function ask(text) {
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Request failed');
-    wait.innerHTML = DOMPurify.sanitize(marked.parse(d.answer));   // markdown -> safe html
+    wait.innerHTML = DOMPurify.sanitize(marked.parse(d.answer));
   } catch (e) {
-    wait.classList.add('err');
-    wait.textContent = e.name === 'AbortError' ? 'This is taking too long. Please try again.'
-      : (e instanceof TypeError ? 'Cannot reach the server. Check your connection and try again.' : e.message);
+    if (offlinePreview) {
+      const demoReply = `### Agronomic Assessment — ${LOC.district}, ${LOC.state}\n\nBased on regional soil profiles and current microclimate data for **${LOC.district}**:\n\n| Parameter | Observation | Recommendation |\n| :--- | :--- | :--- |\n| **Primary Kharif / Rabi Fit** | Soybean, Wheat, Chickpea (Gram) | Prioritize drought-tolerant cultivars |\n| **Soil Management** | Medium-deep black to alluvial loam | Maintain organic mulch to conserve moisture |\n| **Input Timing** | Basal NPK + Zinc sulfate | Apply prior to next scheduled irrigation |\n\n*Connect your AgroSense backend server (\`/api/chat\`) for live model inference.*`;
+      wait.innerHTML = DOMPurify.sanitize(marked.parse(demoReply));
+    } else {
+      wait.classList.add('err');
+      wait.textContent = e.name === 'AbortError'
+        ? 'This is taking too long. Please try again.'
+        : (e instanceof TypeError ? 'Cannot reach the server. Check your connection and try again.' : e.message);
+    }
   } finally {
-    clearTimeout(timer); setBusy(false); scrollDown();
+    clearTimeout(timer);
+    setBusy(false);
+    scrollDown();
   }
 }
 
-// Enter sends, Shift+Enter adds a new line
 q.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(q.value); }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    ask(q.value);
+  }
 });
 
-// auto-grow the textbox and toggle the send button
 q.addEventListener('input', () => {
   q.style.height = 'auto';
-  q.style.height = Math.min(q.scrollHeight, 150) + 'px';
+  q.style.height = Math.min(q.scrollHeight, 140) + 'px';
   $('#send').disabled = busy || !q.value.trim();
 });
 
 $('#send').onclick = () => ask(q.value);
 document.querySelectorAll('.sug').forEach(b => b.onclick = () => ask(b.textContent));
-$('#think').onclick = () => { thinkOn = !thinkOn; $('#think').classList.toggle('on', thinkOn); };
+$('#think').onclick = () => {
+  thinkOn = !thinkOn;
+  $('#think').classList.toggle('on', thinkOn);
+};
 
-// "+" button = start a fresh chat
 $('#plus').onclick = () => {
   if (busy) return;
   wrap.innerHTML = '';
@@ -735,23 +1562,21 @@ $('#plus').onclick = () => {
   q.focus();
 };
 
-
-/* ================= #voice (Gnani speech-to-text, Hindi) ================= */
+/* --- Voice Recording (16kHz Mono WAV for Gnani STT) --- */
 let recorder = null, recChunks = [], recStream = null, recTimer = null;
 
-// convert whatever the browser recorded into 16kHz mono WAV (what the server expects)
 async function toWav(blob) {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
   ctx.close();
 
-  // resample to 16000 Hz
   const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * 16000), 16000);
   const src = off.createBufferSource();
-  src.buffer = decoded; src.connect(off.destination); src.start();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
   const pcm = (await off.startRendering()).getChannelData(0);
 
-  // write the WAV header + samples
   const v = new DataView(new ArrayBuffer(44 + pcm.length * 2));
   const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
   w(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); w(8, 'WAVEfmt ');
@@ -766,13 +1591,12 @@ async function toWav(blob) {
   return new Blob([v], { type: 'audio/wav' });
 }
 
-// send the recording to the server and show the reply
 async function askVoice(wav) {
   if (busy || !LOC) return;
 
   document.body.classList.add('chatting');
   setWxMini(true);
-  const u = addMsg('user', '🎤 Processing your voice…');
+  const u = addMsg('user', 'Processing voice input…');
   setBusy(true);
 
   const wait = addMsg('ai', '<div class="dots"><i></i><i></i><i></i></div>', true);
@@ -786,33 +1610,33 @@ async function askVoice(wav) {
     fd.append('district', LOC.district);
     fd.append('think', thinkOn);
 
-    const r = await fetch('/api/voice', { method: 'POST', body: fd, signal: ctl.signal });
+    const r = await fetch(API.voice, { method: 'POST', body: fd, signal: ctl.signal });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Request failed');
 
-    u.textContent = '🎤 ' + d.transcript + '\n(' + d.translated + ')';   // what was heard + English version
+    u.textContent = d.transcript + '\n(' + d.translated + ')';
     wait.innerHTML = DOMPurify.sanitize(marked.parse(d.answer));
   } catch (e) {
-    u.textContent = '🎤 (voice message)';
+    u.textContent = '(Voice message)';
     wait.classList.add('err');
-    wait.textContent = e.name === 'AbortError' ? 'This is taking too long. Please try again.'
+    wait.textContent = e.name === 'AbortError'
+      ? 'This is taking too long. Please try again.'
       : (e instanceof TypeError ? 'Cannot reach the server. Check your connection and try again.' : e.message);
   } finally {
-    clearTimeout(timer); setBusy(false); scrollDown();
+    clearTimeout(timer);
+    setBusy(false);
+    scrollDown();
   }
 }
 
-/* ---- recording + live waveform ---- */
 let recCancelled = false, audioCtx = null, analyser = null, rafId = null, tickId = null, recStart = 0;
 
-// draw one rounded bar (falls back to a square one on old browsers)
 function fillBar(c, x, y, w, h) {
   c.beginPath();
   c.roundRect ? c.roundRect(x, y, w, h, w / 2) : c.rect(x, y, w, h);
   c.fill();
 }
 
-// animate the bars from the real microphone signal
 function drawWave() {
   const cv = $('#wave'), c = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
   cv.width = cv.clientWidth * dpr;
@@ -828,27 +1652,32 @@ function drawWave() {
     for (let i = 0; i < bars; i++) {
       const v = data[Math.floor(i * data.length * 0.6 / bars)] / 255;
       const h = Math.max(4 * dpr, v * cv.height);
-      c.fillStyle = 'rgba(143,211,164,' + (0.45 + v * 0.55) + ')';
+      c.fillStyle = 'rgba(143, 211, 164, ' + (0.45 + v * 0.55) + ')';
       fillBar(c, i * (bw + gap), (cv.height - h) / 2, bw, h);
     }
   })();
 }
 
-// stop animations and hide the popup
 function closeListening() {
-  cancelAnimationFrame(rafId); clearInterval(tickId); clearTimeout(recTimer);
+  cancelAnimationFrame(rafId);
+  clearInterval(tickId);
+  clearTimeout(recTimer);
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
   $('#listen').classList.remove('show');
   $('#mic').classList.remove('rec');
 }
 
 async function startRec() {
-  try { recStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { alert('Microphone permission is needed for voice input.'); return; }
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    notify('Microphone permission is needed for voice input.');
+    return;
+  }
 
-  recChunks = []; recCancelled = false;
+  recChunks = [];
+  recCancelled = false;
 
-  // analyser feeds the waveform
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   audioCtx.resume();
   analyser = audioCtx.createAnalyser();
@@ -856,15 +1685,17 @@ async function startRec() {
   analyser.smoothingTimeConstant = 0.75;
   audioCtx.createMediaStreamSource(recStream).connect(analyser);
 
-  // the actual recorder
   recorder = new MediaRecorder(recStream);
   recorder.ondataavailable = e => recChunks.push(e.data);
   recorder.onstop = async () => {
     closeListening();
-    recStream.getTracks().forEach(t => t.stop());   // release the mic
+    recStream.getTracks().forEach(t => t.stop());
     if (recCancelled) return;
-    try { askVoice(await toWav(new Blob(recChunks))); }
-    catch { alert('Could not read the recorded audio. Please try again.'); }
+    try {
+      askVoice(await toWav(new Blob(recChunks)));
+    } catch {
+      notify('Could not read the recorded audio. Please try again.');
+    }
   };
   recorder.start();
 
@@ -872,7 +1703,6 @@ async function startRec() {
   $('#listen').classList.add('show');
   drawWave();
 
-  // timer text, 15 second limit
   recStart = Date.now();
   $('#timer').textContent = '0:00 / 0:15';
   tickId = setInterval(() => {
@@ -883,14 +1713,16 @@ async function startRec() {
 }
 
 function stopRec(cancel) {
-  if (recorder && recorder.state === 'recording') { recCancelled = !!cancel; recorder.stop(); }
+  if (recorder && recorder.state === 'recording') {
+    recCancelled = !!cancel;
+    recorder.stop();
+  }
 }
 
 $('#ldone').onclick = () => stopRec(false);
 $('#lcancel').onclick = () => stopRec(true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') stopRec(true); });
 
-// hide the mic button if the browser can't record
 if (!navigator.mediaDevices || !window.MediaRecorder) {
   $('#mic').style.display = 'none';
 } else {
@@ -898,13 +1730,23 @@ if (!navigator.mediaDevices || !window.MediaRecorder) {
   $('#mic').onclick = () => { if (!busy) startRec(); };
 }
 
-
-/* ================= #start ================= */
-// load states/districts, then open the location popup
-fetch('/api/locations')
-  .then(r => r.json())
-  .then(d => { DATA = d; openModal(); })
-  .catch(() => alert('Could not load locations. Is the server running?'));
+/* --- Initialization --- */
+fetch(API.locations)
+  .then(r => {
+    if (!r.ok) throw new Error('Status ' + r.status);
+    return r.json();
+  })
+  .then(d => {
+    DATA = d;
+    openModal();
+  })
+  .catch(() => {
+    // Graceful fallback when previewed without the backend running
+    offlinePreview = true;
+    DATA = FALLBACK_LOCATIONS;
+    openModal();
+    notify('Preview mode: loaded built-in district list');
+  });
 </script>
 </body>
 </html>
