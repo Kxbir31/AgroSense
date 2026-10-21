@@ -587,7 +587,7 @@ def summarize_messages(messages):
     if text:
         return text.strip()
 
-    # LLM unavailable: keep the raw messages so the memory is not lost
+    # LLM unavailable: keep the raw messages so the memory is not lostt
     return " | ".join(messages)
 
 
