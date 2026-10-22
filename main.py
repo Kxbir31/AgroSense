@@ -605,7 +605,7 @@ def process_query(query, district, state, think=False, session_id="default"):
     route = route_query(query, district)
     weather, context = None, []
 
-    # Fetch only what the route requires
+    # Fetch only what the route required
     if route in ("WEATHER", "BOTH"):
         weather = get_weather(district, state)
         if weather is None:
