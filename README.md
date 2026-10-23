@@ -34,6 +34,7 @@ The numbers come from the data, not from the model's memory. That's what makes t
 ```mermaid
 flowchart TD
     A[User picks State + District] --> B[Frontend: static/index.html]
+    X[Text input: typed question] --> B
     V[Voice input: Hindi or English] --> G1[Gnani AI speech model]
     G1 --> T[Transcribe + auto-translate]
     T --> B
@@ -47,7 +48,7 @@ flowchart TD
     F2 --> G
     E --> H[Prompt builder]
     G --> H
-    H --> I[LLM with model fallback]
+    H --> I[Hugging Face LLM with model fallback]
     I --> J[Markdown answer with page citations]
     J --> B
 ```
