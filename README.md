@@ -1,48 +1,29 @@
-<div align="center">
+# AgroSense
 
-# 🌾 AgroSense
+A farming assistant I built that gives advice based on your state and district, using live weather and a knowledge base made from an agriculture PDF.
 
-### An AI agriculture assistant that gives district-level farming advice using live weather and a retrieval-augmented knowledge base.
+![AgroSense screenshot](screenshot.png)
 
-![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20DB-orange)
-![HuggingFace](https://img.shields.io/badge/Hugging%20Face-Inference-FFD21E?logo=huggingface&logoColor=black)
-![LangChain](https://img.shields.io/badge/LangChain-RAG-1C3C3C)
-![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20Workflow-1C3C3C)
+## Why I made this
 
-![AgroSense screenshot](docs/screenshot.png)
+When I tried asking general chatbots about farming, the answers were generic. Good advice depends on where you are and what the weather is doing right now, and they know neither. So I made something that asks for your state and district first, then answers using:
 
-</div>
+- information about that district, pulled from a PDF (soil, crops, seasons, irrigation, stats)
+- the current weather there
+- an LLM that puts both together in plain language, with page numbers so you can check the source
 
----
+## What it does
 
-## 📌 Overview
+- **Asks for your location first.** A popup takes your state and district (all 36 states/UTs, searchable). You can change it any time without restarting.
+- **Hybrid search.** Questions are searched with both BM25 (keywords) and ChromaDB (vectors), and the results are merged with Reciprocal Rank Fusion. Chunks that mention your district get a small boost.
+- **Query router.** A simple keyword check decides whether a question needs weather, document search, both, or neither. This saves API calls. It also understands some Hinglish words like *barish*, *fasal* and *sinchai*.
+- **Live weather** from OpenWeatherMap, cached for 10 minutes.
+- **LLM fallback.** It uses the Hugging Face Inference API and tries another model if one fails or returns nothing.
+- **Careful prompt.** The model is told not to make up prices, dosages, scheme eligibility or sources, and to cite pages.
+- **Frontend.** Chat-style page with Markdown rendering, voice input, a "Think" mode for longer answers, and starter questions.
+- **Errors.** Missing keys or failed API calls show a readable message instead of a traceback.
 
-Farming decisions depend on **where** you are and **what the weather is right now**. Generic chatbots know neither. AgroSense asks for your state and district, then answers using:
-
-- **District-specific knowledge** retrieved from an agricultural PDF (soil, crops, seasons, irrigation, statistics)
-- **Live weather** for that district
-- **An LLM** that combines both into plain-language advice, with page citations from the source document
-
-The result is a premium, chat-style interface backed by a real retrieval pipeline, not a mock demo.
-
----
-
-## ✨ Features
-
-- **Location-aware answers:** a first-run modal captures State and District (36 states/UTs, searchable dropdowns). Every query carries that context, and it can be changed any time without restarting.
-- **Hybrid retrieval (RAG):** BM25 keyword search and ChromaDB vector search, merged with **Reciprocal Rank Fusion**, plus a boost for chunks that mention the user's district.
-- **Smart query router:** a lightweight keyword router decides whether a question needs `WEATHER`, `RETRIEVAL`, `BOTH`, or neither, so the app doesn't waste API or LLM calls. It understands English and Hinglish (e.g. *barish*, *fasal*, *sinchai*).
-- **Live weather:** OpenWeatherMap integration with a 10-minute cache. It feeds both the LLM and a weather popup in the UI.
-- **Resilient LLM layer:** Hugging Face Inference API with automatic fallback across multiple models if one fails or returns empty output.
-- **Grounded, safety-minded prompting:** the system prompt forbids fabricating prices, dosages, scheme eligibility, or sources, and asks for page citations.
-- **Polished UI:** glassmorphism design, Markdown rendering (tables, lists, code), voice input, a "Think" mode for more detailed answers, and clickable starter questions.
-- **Graceful error handling:** missing keys, API failures, and slow responses show friendly messages and never leak tracebacks.
-
----
-
-## 🏗️ Architecture
+## How it works
 
 ```mermaid
 flowchart TD
@@ -62,45 +43,35 @@ flowchart TD
     J --> B
 ```
 
-**Request flow:** the frontend sends `{query, state, district, think}`. The backend routes the question, gathers weather and/or document context, builds a grounded prompt, calls the LLM, and returns the answer.
+The frontend sends `{query, state, district, think}` to the backend. The backend routes the question, collects weather and/or document context, builds the prompt, calls the LLM and returns the answer.
 
----
+## Built with
 
-## 🧰 Tech Stack
+- Python, FastAPI, Uvicorn
+- LangChain (loaders and splitters), ChromaDB, rank-bm25
+- sentence-transformers `all-MiniLM-L6-v2` for embeddings
+- Hugging Face Inference API (Llama 3.1, Qwen 2.5, gpt-oss)
+- OpenWeatherMap API
+- Plain HTML/CSS/JS on the frontend, with `marked` and `DOMPurify` for Markdown
 
-| Layer | Technology |
-|---|---|
-| Backend | Python, FastAPI, Uvicorn |
-| RAG | LangChain (loaders and splitters), ChromaDB, `rank-bm25` |
-| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
-| LLM | Hugging Face Inference API (Llama 3.1, Qwen 2.5, gpt-oss with fallback) |
-| Weather | OpenWeatherMap API |
-| Frontend | Vanilla HTML/CSS/JS, `marked` + `DOMPurify` for safe Markdown |
-
----
-
-## 📁 Project Structure
+## Files
 
 ```
 AgroSense/
-├── main.py            # RAG + agent core: router, weather, hybrid retrieval, LLM
-├── server.py          # FastAPI layer exposing the agent to the web UI
-├── locations.py       # States/UTs and districts for the location modal
-├── static/
-│   ├── index.html     # Full frontend (single file)
-│   └── background.jpg # Background image (add your own)
-├── requirements.txt
-├── .env.example
-└── README.md
+├── main.py         # router, weather, hybrid retrieval, LLM calls
+├── server.py       # FastAPI app for the web UI
+├── locations.py    # states and districts for the popup
+├── Main_Backup.py  # old backup of main.py
+├── static/         # index.html (whole frontend) and background image
+├── docs/           # screenshot
+└── India_District_Agri_Master_RAG.pdf   # the knowledge base
 ```
 
----
+## Running it
 
-## 🚀 Getting Started
+1. Clone and install:
 
-### 1. Clone and install
-
-```bash
+```
 git clone https://github.com/Kxbir31/AgroSense.git
 cd AgroSense
 python -m venv .venv
@@ -108,63 +79,38 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Add your data and assets
+2. Make a `.env` file in the project root:
 
-- Place your agriculture knowledge PDF in the project root as `India_District_Agri_Master_RAG.pdf` (not included in this repo).
-- Add a landscape photo as `static/background.jpg`.
-
-### 3. Configure environment variables
-
-Create a `.env` file (see `.env.example`):
-
-```env
+```
 HF_TOKEN=your_huggingface_token
 OPENWEATHER_API_KEY=your_openweathermap_key
 ```
 
-- Hugging Face token: https://huggingface.co/settings/tokens (enable *Inference Providers*)
-- OpenWeatherMap key: https://openweathermap.org/api
+You can get a Hugging Face token at https://huggingface.co/settings/tokens (turn on Inference Providers) and a weather key at https://openweathermap.org/api.
 
-### 4. Run
+3. Start the server:
 
-```bash
+```
 uvicorn server:app --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:8000**. The first start builds the vector database from your PDF, which takes a minute or two. Later starts reuse it. If you change the PDF, delete the `chroma_db/` folder so it rebuilds.
+Then open http://127.0.0.1:8000.
 
----
+The first run builds the vector database from the PDF, which takes a minute or two. After that it reuses it. If you change the PDF, delete the `chroma_db/` folder so it gets rebuilt.
 
-## 💬 Example Questions
+## Things you can ask
 
-- *What crops are suitable for my district?*
-- *Should I spray pesticide today?* (uses live weather and district data)
-- *What is the soil condition in my district?*
-- *Kal barish hogi kya, sinchai karni chahiye?* (Hinglish supported)
+- What crops are suitable for my district?
+- Should I spray pesticide today? (uses weather + district data)
+- What is the soil like in my district?
+- Kal barish hogi kya, sinchai karni chahiye?
+- weather based crop recommendations 
 
----
+## Notes on keys and safety
 
-## 🔐 Security Notes
+API keys stay in `.env` and are never sent to the browser. Input is checked on the server and the model's output is sanitized before it's shown. `.env` and `chroma_db/` are in `.gitignore`.
 
-- API keys live only in `.env` and are never sent to the browser.
-- User input is validated server-side, and model output is sanitized before rendering.
-- `.env` and the generated `chroma_db/` are git-ignored.
 
----
+## Author
 
-## 🗺️ Roadmap
-
-- [ ] Multi-day weather forecast support
-- [ ] Conversation memory across turns
-- [ ] Multilingual UI (Hindi and regional languages)
-- [ ] Streaming responses
-- [ ] Docker deployment
-
----
-
-## 👤 Author
-
-**Kabir Bhardwaj**
-GitHub: [@Kxbir31](https://github.com/Kxbir31)
-
-If you find this project useful, consider giving it a ⭐
+Kabir Bhardwaj, [@Kxbir31](https://github.com/Kxbir31)
