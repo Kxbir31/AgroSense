@@ -43,7 +43,7 @@ flowchart TD
     F2 --> G
     E --> H[Prompt builder]
     G --> H
-    H --> I[Hugging Face LLM with model fallback]
+    H --> I[ LLM with model fallback]
     I --> J[Markdown answer with page citations]
     J --> B
 ```
