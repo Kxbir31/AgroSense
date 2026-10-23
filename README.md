@@ -114,13 +114,6 @@ The first run builds the vector database from the PDF, which takes a minute or t
 
 API keys stay in `.env` and are never sent to the browser. Input is checked on the server and the model's output is sanitized before it's shown. `.env` and `chroma_db/` are in `.gitignore`.
 
-## Still to do
-
-- [ ] Multi-day weather forecast
-- [ ] Hindi and other regional languages in the UI
-- [ ] Streaming responses
-- [ ] Docker setup
-
 ## Author
 
 Kabir Bhardwaj, [@Kxbir31](https://github.com/Kxbir31)
