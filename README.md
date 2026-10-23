@@ -1,4 +1,4 @@
-# AgroSense
+<h1 align="center">AgroSense</h1>
 
 A farming assistant I built that gives advice based on your state and district, using live weather and a knowledge base made from an agriculture PDF.
 
@@ -6,17 +6,22 @@ A farming assistant I built that gives advice based on your state and district, 
 
 ## Why I made this
 
-When I tried asking general chatbots about farming, the answers were generic. Good advice depends on where you are and what the weather is doing right now, and they know neither. So I made something that asks for your state and district first, then answers using:
+General chatbots give generic farming advice. An LLM doesn't actually have district-level numbers like soil nitrogen percentage or the last two years of crop yields, so it ends up guessing. For farming, a guess isn't good enough.
 
-- information about that district, pulled from a PDF (soil, crops, seasons, irrigation, stats)
-- the current weather there
-- an LLM that puts both together in plain language, with page numbers so you can check the source
+So I built the knowledge base myself. The PDF this project searches was made by cleaning and combining 4 different messy datasets into one structured document, with the exact figures for each district. When you ask a question, AgroSense:
+
+- looks up your district's real data from that PDF (soil, crops, past yields, seasons, irrigation)
+- adds the current weather for your location
+- lets the LLM explain it in plain language, with page numbers so you can check every claim
+
+The numbers come from the data, not from the model's memory. That's what makes the answers reliable and something you can trust.
 
 ## What it does
 
 - **Asks for your location first.** A popup takes your state and district (all 36 states/UTs, searchable). You can change it any time without restarting.
 - **Hybrid search.** Questions are searched with both BM25 (keywords) and ChromaDB (vectors), and the results are merged with Reciprocal Rank Fusion. Chunks that mention your district get a small boost.
 - **Query router.** A simple keyword check decides whether a question needs weather, document search, both, or neither. This saves API calls. It also understands some Hinglish words like *barish*, *fasal* and *sinchai*.
+- **Conversation memory.** The last 5 messages are sent to the model as they are. Anything older than that is squashed into a short running summary, so it can still follow up on earlier questions without the prompt getting longer each time.
 - **Live weather** from OpenWeatherMap, cached for 10 minutes.
 - **LLM fallback.** It uses the Hugging Face Inference API and tries another model if one fails or returns nothing.
 - **Careful prompt.** The model is told not to make up prices, dosages, scheme eligibility or sources, and to cite pages.
@@ -43,7 +48,7 @@ flowchart TD
     J --> B
 ```
 
-The frontend sends `{query, state, district, think}` to the backend. The backend routes the question, collects weather and/or document context, builds the prompt, calls the LLM and returns the answer.
+The frontend sends `{query, state, district, think}` to the backend. The backend routes the question, collects weather and/or document context, adds the chat memory (the summary plus the last 5 messages), builds the prompt, calls the LLM and returns the answer.
 
 ## Built with
 
@@ -104,12 +109,17 @@ The first run builds the vector database from the PDF, which takes a minute or t
 - Should I spray pesticide today? (uses weather + district data)
 - What is the soil like in my district?
 - Kal barish hogi kya, sinchai karni chahiye?
-- weather based crop recommendations 
 
 ## Notes on keys and safety
 
 API keys stay in `.env` and are never sent to the browser. Input is checked on the server and the model's output is sanitized before it's shown. `.env` and `chroma_db/` are in `.gitignore`.
 
+## Still to do
+
+- [ ] Multi-day weather forecast
+- [ ] Hindi and other regional languages in the UI
+- [ ] Streaming responses
+- [ ] Docker setup
 
 ## Author
 
