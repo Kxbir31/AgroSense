@@ -21,7 +21,7 @@ The numbers come from the data, not from the model's memory. That's what makes t
 - **Asks for your location first.** A popup takes your state and district (all 36 states/UTs, searchable). You can change it any time without restarting.
 - **Hybrid search.** Questions are searched with both BM25 (keywords) and ChromaDB (vectors), and the results are merged with Reciprocal Rank Fusion. Chunks that mention your district get a small boost.
 - **Query router.** A simple keyword check decides whether a question needs weather, document search, both, or neither. This saves API calls. It also understands some Hinglish words like *barish*, *fasal* and *sinchai*.
-- **Speak in Hindi or English.** Farmers can ask questions by voice instead of typing. Hindi speech is transcribed using a Gnani AI speech model and automatically translated, so you can just talk in Hindi and get an answer without switching languages.
+- **Speak in Hindi or English.** Farmers can ask questions by voice instead of typing. Hindi speech is transcribed using a Gnani AI speech model and automatically translated, so you can just talk in Hindi without switching languages. Answers are shown as text.
 - **Conversation memory.** The last 5 messages are sent to the model as they are. Anything older than that is squashed into a short running summary, so it can still follow up on earlier questions without the prompt getting longer each time.
 - **Live weather** from OpenWeatherMap, cached for 10 minutes.
 - **LLM fallback.** It uses the Hugging Face Inference API and tries another model if one fails or returns nothing.
@@ -59,7 +59,7 @@ The frontend sends `{query, state, district, think}` to the backend. The backend
 - Python, FastAPI, Uvicorn
 - LangChain (loaders and splitters), ChromaDB, rank-bm25
 - sentence-transformers `all-MiniLM-L6-v2` for embeddings
-- Hugging Face Inference API (Llama 3.1, Qwen 2.5, gpt-oss) / Google Gemini -3.5 flash 
+- Hugging Face Inference API (Llama 3.1, Qwen 2.5, gpt-oss)
 - OpenWeatherMap API
 - Gnani AI speech model for Hindi voice input
 - Plain HTML/CSS/JS on the frontend, with `marked` and `DOMPurify` for Markdown
