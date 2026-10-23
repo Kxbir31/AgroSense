@@ -2,7 +2,7 @@
 
 A farming assistant I built that gives advice based on your state and district, using live weather and a knowledge base made from an agriculture PDF.
 
-![AgroSense screenshot](screenshot.png)
+![AgroSense screenshot](docs/screenshot.png)
 
 ## Why I made this
 
